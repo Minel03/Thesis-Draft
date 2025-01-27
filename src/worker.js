@@ -41,7 +41,11 @@ self.onmessage = async (e) => {
             return acc;
           }, {});
 
-          allData.push(row["wind_power"]); // Extract the "wind_power" column
+          // Collect "time" and "wind_power"
+          allData.push({
+            time: row["time"], // Extract the "time" column
+            wind_power: row["wind_power"], // Extract the "wind_power" column
+          });
         }
       }
     }
@@ -54,7 +58,10 @@ self.onmessage = async (e) => {
         return acc;
       }, {});
 
-      allData.push(row["wind_power"]);
+      allData.push({
+        time: row["time"],
+        wind_power: row["wind_power"],
+      });
     }
 
     // Send the final data back to the main thread
