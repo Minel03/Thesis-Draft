@@ -15,13 +15,13 @@ const App = () => {
         const { type, data, error } = e.data;
 
         if (type === "chunk") {
-          // Update preview
+          // Update preview for the first chunk
           if (dataPreview.length === 0) {
-            setDataPreview(data.slice(0, 10)); // Show first 10 rows
+            setDataPreview(data.slice(0, 10)); // Display the first 10 rows as a preview
           }
         } else if (type === "complete") {
           worker.terminate();
-          downloadJson(data); // Download JSON
+          downloadJson(data); // Download JSON when done
           setIsProcessing(false);
         } else if (type === "error") {
           console.error("Error processing file:", error);
@@ -42,7 +42,7 @@ const App = () => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = "wind_power_data.json";
+    link.download = "wind_power_data.json"; // File name for download
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
