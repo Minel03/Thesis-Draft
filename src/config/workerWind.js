@@ -41,10 +41,12 @@ self.onmessage = async (e) => {
             return acc;
           }, {});
 
-          // Collect "time" and "wind_power"
+          // Collect "time", "wind_power", "Wind Speed", and "Dew Point"
           allData.push({
             time: row["time"], // Extract the "time" column
             wind_power: row["wind_power"], // Extract the "wind_power" column
+            wind_speed: row["Wind Speed"], // Extract the "Wind Speed" column
+            dew_point: row["Dew Point"], // Extract the "Dew Point" column
           });
         }
       }
@@ -61,6 +63,8 @@ self.onmessage = async (e) => {
       allData.push({
         time: row["time"],
         wind_power: row["wind_power"],
+        wind_speed: row["Wind Speed"],
+        dew_point: row["Dew Point"],
       });
     }
 
