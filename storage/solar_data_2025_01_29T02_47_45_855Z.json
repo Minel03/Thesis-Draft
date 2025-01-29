@@ -1,0 +1,182 @@
+[
+  {
+    "week": "2018-W2",
+    "solar_power": 20743.745538898656,
+    "dhi": 5937495,
+    "dni": 31884710,
+    "ghi": 24880965,
+    "temperature": 20.34241161616096,
+    "relative_humidity": 44.35130167748824,
+    "solar_zenith_angle": 90.17161580086555
+  },
+  {
+    "week": "2018-W3",
+    "solar_power": 23630.40936004274,
+    "dhi": 6755870,
+    "dni": 36049285,
+    "ghi": 28346750,
+    "temperature": 20.29139632936603,
+    "relative_humidity": 43.013702959656875,
+    "solar_zenith_angle": 89.62125744047668
+  },
+  {
+    "week": "2018-W4",
+    "solar_power": 23995.114761806253,
+    "dhi": 6401570,
+    "dni": 37034140,
+    "ghi": 28483250,
+    "temperature": 18.930015876166582,
+    "relative_humidity": 47.982249173279655,
+    "solar_zenith_angle": 89.59414227843871
+  },
+  {
+    "week": "2018-W5",
+    "solar_power": 23559.677857830116,
+    "dhi": 5730535,
+    "dni": 37727815,
+    "ghi": 27982595,
+    "temperature": 19.50501996527806,
+    "relative_humidity": 44.19103532986131,
+    "solar_zenith_angle": 89.16143854166744
+  },
+  {
+    "week": "2018-W6",
+    "solar_power": 7309.545884852508,
+    "dhi": 2355985,
+    "dni": 10814085.000000002,
+    "ghi": 8872025,
+    "temperature": 21.715189231056797,
+    "relative_humidity": 41.97712107048397,
+    "solar_zenith_angle": 87.29223631847381
+  },
+  {
+    "week": "2018-W1",
+    "solar_power": 3513.398262037487,
+    "dhi": 796205,
+    "dni": 5666150,
+    "ghi": 3892405,
+    "temperature": 18.34366987179488,
+    "relative_humidity": 46.37811431623955,
+    "solar_zenith_angle": 94.7334412393167
+  },
+  {
+    "week": "2019-W2",
+    "solar_power": 20282.761444471376,
+    "dhi": 5515005,
+    "dni": 31692859.999999996,
+    "ghi": 24481840,
+    "temperature": 18.582798218238956,
+    "relative_humidity": 51.46259249999802,
+    "solar_zenith_angle": 89.92862648148136
+  },
+  {
+    "week": "2019-W3",
+    "solar_power": 22724.549606241177,
+    "dhi": 6336150,
+    "dni": 35241185,
+    "ghi": 27333120,
+    "temperature": 18.94587198439084,
+    "relative_humidity": 50.27302587632641,
+    "solar_zenith_angle": 89.74727703373027
+  },
+  {
+    "week": "2019-W4",
+    "solar_power": 22542.099400483687,
+    "dhi": 6583425,
+    "dni": 34126195,
+    "ghi": 27042190,
+    "temperature": 17.723308500698355,
+    "relative_humidity": 53.38408515211476,
+    "solar_zenith_angle": 89.73211937830565
+  },
+  {
+    "week": "2019-W5",
+    "solar_power": 21926.704258627058,
+    "dhi": 6081975,
+    "dni": 33942490,
+    "ghi": 26248170,
+    "temperature": 18.702519478320628,
+    "relative_humidity": 52.23138922764214,
+    "solar_zenith_angle": 89.58090692750564
+  },
+  {
+    "week": "2019-W6",
+    "solar_power": 7764.527971316509,
+    "dhi": 2275350,
+    "dni": 11860900,
+    "ghi": 9444450,
+    "temperature": 17.623986494576503,
+    "relative_humidity": 50.28496779291747,
+    "solar_zenith_angle": 88.36261823232186
+  },
+  {
+    "week": "2019-W1",
+    "solar_power": 2256.663504521241,
+    "dhi": 806035,
+    "dni": 3293245,
+    "ghi": 2834035,
+    "temperature": 19.33634722222227,
+    "relative_humidity": 49.570502777777754,
+    "solar_zenith_angle": 90.20253472222197
+  },
+  {
+    "week": "2020-W2",
+    "solar_power": 20644.02569120252,
+    "dhi": 5290584.999999999,
+    "dni": 32682845,
+    "ghi": 24390920,
+    "temperature": 20.26210515873077,
+    "relative_humidity": 43.940832142856735,
+    "solar_zenith_angle": 89.86554682539654
+  },
+  {
+    "week": "2020-W3",
+    "solar_power": 22694.35462596634,
+    "dhi": 6396780,
+    "dni": 35473005,
+    "ghi": 27274065,
+    "temperature": 19.38930720899498,
+    "relative_humidity": 46.280618055554214,
+    "solar_zenith_angle": 89.80417609126933
+  },
+  {
+    "week": "2020-W4",
+    "solar_power": 22718.3955467563,
+    "dhi": 6970450,
+    "dni": 34765965,
+    "ghi": 26924160,
+    "temperature": 19.330296792327342,
+    "relative_humidity": 50.30276455026399,
+    "solar_zenith_angle": 89.79822238756663
+  },
+  {
+    "week": "2020-W5",
+    "solar_power": 24331.68530494514,
+    "dhi": 5809035,
+    "dni": 39285945,
+    "ghi": 29041260,
+    "temperature": 19.725520833332897,
+    "relative_humidity": 45.35566765872903,
+    "solar_zenith_angle": 90.4811044146821
+  },
+  {
+    "week": "2020-W6",
+    "solar_power": 10758.6238323125,
+    "dhi": 2559825,
+    "dni": 17640550,
+    "ghi": 13099910,
+    "temperature": 20.486229046507475,
+    "relative_humidity": 44.158705850581256,
+    "solar_zenith_angle": 88.9529549970108
+  },
+  {
+    "week": "2020-W1",
+    "solar_power": 2221.9671823749954,
+    "dhi": 488225,
+    "dni": 3721960,
+    "ghi": 2739815,
+    "temperature": 25.884484126984095,
+    "relative_humidity": 31.991266865079663,
+    "solar_zenith_angle": 87.95287003968276
+  }
+]
