@@ -44,7 +44,7 @@ self.onmessage = async (e) => {
             return acc;
           }, {});
 
-          const dateTime = new Date(row["time"]);
+          const dateTime = new Date(row["time"] + "Z");
           if (isNaN(dateTime)) continue;
 
           const hourKey = dateTime.toISOString().slice(0, 13); // YYYY-MM-DDTHH

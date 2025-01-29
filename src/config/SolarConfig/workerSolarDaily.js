@@ -42,7 +42,7 @@ self.onmessage = async (e) => {
             return acc;
           }, {});
 
-          const dateTime = new Date(row["time"]);
+          const dateTime = new Date(row["time"] + "Z");
           if (isNaN(dateTime)) continue;
 
           const dayKey = dateTime.toISOString().slice(0, 10); // YYYY-MM-DD

@@ -16,6 +16,18 @@ self.onmessage = async (e) => {
     let headers = [];
     let rawData = [];
 
+    function getISOWeek(date) {
+      const tempDate = new Date(
+        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+      );
+      const dayNum = tempDate.getUTCDay() || 7; // Make Sunday (0) become 7
+      tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum);
+      const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
+      const weekNumber = Math.ceil(((tempDate - yearStart) / 86400000 + 1) / 7);
+
+      return { year: tempDate.getUTCFullYear(), week: weekNumber };
+    }
+
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
@@ -41,12 +53,12 @@ self.onmessage = async (e) => {
             return acc;
           }, {});
 
-          const dateTime = new Date(row["time"]);
+          const dateTime = new Date(row["time"] + "Z");
           if (isNaN(dateTime)) continue;
 
-          const weekKey = `${dateTime.getFullYear()}-W${Math.ceil(
-            (dateTime.getDate() - dateTime.getDay() + 10) / 7
-          )}`;
+          // Get correctly formatted ISO week
+          const { year, week } = getISOWeek(dateTime);
+          const weekKey = `${year}-W${week.toString().padStart(2, "0")}`;
 
           rawData.push({
             week: weekKey,
