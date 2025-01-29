@@ -69,7 +69,7 @@ const HourlySolarForecast = () => {
 
     // Create a unique filename using a timestamp
     const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
-    const filename = `solar_data_${timestamp}.json`;
+    const filename = `hourly_solar_data_${timestamp}.json`;
 
     // Convert data to a Blob
     const blob = new Blob([JSON.stringify(data, null, 2)], {
