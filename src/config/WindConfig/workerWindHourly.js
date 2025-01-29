@@ -83,13 +83,23 @@ self.onmessage = async (e) => {
 
     // Compute averages where needed
     const aggregatedData = Object.values(hourlyData).map((hourEntry) => {
+      const averageWindSpeed =
+        hourEntry.wind_speed.length > 0
+          ? hourEntry.wind_speed.reduce((sum, value) => sum + value, 0) /
+            hourEntry.wind_speed.length
+          : 0;
+
+      const averageDewPoint =
+        hourEntry.dew_point.length > 0
+          ? hourEntry.dew_point.reduce((sum, value) => sum + value, 0) /
+            hourEntry.dew_point.length
+          : 0;
+
       return {
         hour: hourEntry.hour,
         wind_power: hourEntry.wind_power, // Keep sum
-        wind_speed:
-          hourEntry.count > 0 ? hourEntry.wind_speed / hourEntry.count : 0, // Mean
-        dew_point:
-          hourEntry.count > 0 ? hourEntry.dew_point / hourEntry.count : 0, // Mean
+        wind_speed: averageWindSpeed, // Mean
+        dew_point: averageDewPoint, // Mean
       };
     });
 

@@ -16,6 +16,7 @@ self.onmessage = async (e) => {
     let headers = [];
     let rawData = [];
 
+    // Function to calculate the ISO week number
     function getISOWeek(date) {
       const tempDate = new Date(
         Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
@@ -94,13 +95,23 @@ self.onmessage = async (e) => {
 
     // Compute averages where needed
     const aggregatedData = Object.values(weeklyData).map((weekEntry) => {
+      const averageWindSpeed =
+        weekEntry.wind_speed.length > 0
+          ? weekEntry.wind_speed.reduce((sum, value) => sum + value, 0) /
+            weekEntry.wind_speed.length
+          : 0;
+
+      const averageDewPoint =
+        weekEntry.dew_point.length > 0
+          ? weekEntry.dew_point.reduce((sum, value) => sum + value, 0) /
+            weekEntry.dew_point.length
+          : 0;
+
       return {
         week: weekEntry.week,
         wind_power: weekEntry.wind_power, // Keep sum
-        wind_speed:
-          weekEntry.count > 0 ? weekEntry.wind_speed / weekEntry.count : 0, // Mean
-        dew_point:
-          weekEntry.count > 0 ? weekEntry.dew_point / weekEntry.count : 0, // Mean
+        wind_speed: averageWindSpeed, // Mean
+        dew_point: averageDewPoint, // Mean
       };
     });
 

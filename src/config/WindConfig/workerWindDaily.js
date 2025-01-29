@@ -31,6 +31,7 @@ self.onmessage = async (e) => {
 
         if (!isHeaderParsed) {
           headers = cleanLine.split(",").map((h) => h.trim());
+          console.log("Headers:", headers); // Debug the headers
           isHeaderParsed = true;
         } else {
           const values = cleanLine.split(",").map((v) => v.trim());
@@ -49,8 +50,8 @@ self.onmessage = async (e) => {
           rawData.push({
             day: dayKey,
             wind_power: parseFloat(row["wind_power"]) || 0,
-            wind_speed: parseFloat(row["Wind Speed"]) || 0,
-            dew_point: parseFloat(row["Dew Point"]) || null,
+            wind_speed: parseFloat(row["Wind Speed"]) || 0, // Ensure this is exactly the same as the CSV header
+            dew_point: parseFloat(row["Dew Point"]) || null, // Ensure this is exactly the same as the CSV header
           });
         }
       }
@@ -84,8 +85,13 @@ self.onmessage = async (e) => {
         day: dayEntry.day,
         wind_power: dayEntry.wind_power, // Keep sum
         wind_speed:
-          dayEntry.count > 0 ? dayEntry.wind_speed / dayEntry.count : 0, // Mean
-        dew_point: dayEntry.count > 0 ? dayEntry.dew_point / dayEntry.count : 0, // Mean
+          dayEntry.count > 0
+            ? dayEntry.wind_speed.reduce((a, b) => a + b, 0) / dayEntry.count
+            : 0, // Mean
+        dew_point:
+          dayEntry.count > 0
+            ? dayEntry.dew_point.reduce((a, b) => a + b, 0) / dayEntry.count
+            : 0, // Mean
       };
     });
 
