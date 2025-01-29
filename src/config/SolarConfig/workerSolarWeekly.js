@@ -110,22 +110,22 @@ self.onmessage = async (e) => {
     const aggregatedData = Object.values(weeklyData).map((weekEntry) => {
       return {
         week: weekEntry.week,
-        solar_power: weekEntry.solar_power,
-        dhi: weekEntry.dhi,
-        dni: weekEntry.dni,
-        ghi: weekEntry.ghi,
+        solar_power: weekEntry.solar_power, // Sum (correct)
+        dhi: weekEntry.count > 0 ? weekEntry.dhi / weekEntry.count : 0, // Mean
+        dni: weekEntry.count > 0 ? weekEntry.dni / weekEntry.count : 0, // Mean
+        ghi: weekEntry.count > 0 ? weekEntry.ghi / weekEntry.count : 0, // Mean
         temperature: weekEntry.temperature.length
           ? weekEntry.temperature.reduce((a, b) => a + b, 0) /
             weekEntry.temperature.length
-          : null,
+          : null, // Mean
         relative_humidity: weekEntry.relative_humidity.length
           ? weekEntry.relative_humidity.reduce((a, b) => a + b, 0) /
             weekEntry.relative_humidity.length
-          : null,
+          : null, // Mean
         solar_zenith_angle: weekEntry.solar_zenith_angle.length
           ? weekEntry.solar_zenith_angle.reduce((a, b) => a + b, 0) /
             weekEntry.solar_zenith_angle.length
-          : null,
+          : null, // Mean
       };
     });
 

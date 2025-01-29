@@ -99,22 +99,22 @@ self.onmessage = async (e) => {
     const aggregatedData = Object.values(hourlyData).map((hourEntry) => {
       return {
         hour: hourEntry.hour,
-        solar_power: hourEntry.solar_power,
-        dhi: hourEntry.dhi,
-        dni: hourEntry.dni,
-        ghi: hourEntry.ghi,
+        solar_power: hourEntry.solar_power, // Keep sum
+        dhi: hourEntry.count > 0 ? hourEntry.dhi / hourEntry.count : 0, // Mean
+        dni: hourEntry.count > 0 ? hourEntry.dni / hourEntry.count : 0, // Mean
+        ghi: hourEntry.count > 0 ? hourEntry.ghi / hourEntry.count : 0, // Mean
         temperature: hourEntry.temperature.length
           ? hourEntry.temperature.reduce((a, b) => a + b, 0) /
             hourEntry.temperature.length
-          : null,
+          : null, // Mean
         relative_humidity: hourEntry.relative_humidity.length
           ? hourEntry.relative_humidity.reduce((a, b) => a + b, 0) /
             hourEntry.relative_humidity.length
-          : null,
+          : null, // Mean
         solar_zenith_angle: hourEntry.solar_zenith_angle.length
           ? hourEntry.solar_zenith_angle.reduce((a, b) => a + b, 0) /
             hourEntry.solar_zenith_angle.length
-          : null,
+          : null, // Mean
       };
     });
 

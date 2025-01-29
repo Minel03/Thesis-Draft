@@ -97,22 +97,22 @@ self.onmessage = async (e) => {
     const aggregatedData = Object.values(dailyData).map((dayEntry) => {
       return {
         day: dayEntry.day,
-        solar_power: dayEntry.solar_power,
-        dhi: dayEntry.dhi,
-        dni: dayEntry.dni,
-        ghi: dayEntry.ghi,
+        solar_power: dayEntry.solar_power, // Keep sum
+        dhi: dayEntry.count > 0 ? dayEntry.dhi / dayEntry.count : 0, // Mean
+        dni: dayEntry.count > 0 ? dayEntry.dni / dayEntry.count : 0, // Mean
+        ghi: dayEntry.count > 0 ? dayEntry.ghi / dayEntry.count : 0, // Mean
         temperature: dayEntry.temperature.length
           ? dayEntry.temperature.reduce((a, b) => a + b, 0) /
             dayEntry.temperature.length
-          : null,
+          : null, // Mean
         relative_humidity: dayEntry.relative_humidity.length
           ? dayEntry.relative_humidity.reduce((a, b) => a + b, 0) /
             dayEntry.relative_humidity.length
-          : null,
+          : null, // Mean
         solar_zenith_angle: dayEntry.solar_zenith_angle.length
           ? dayEntry.solar_zenith_angle.reduce((a, b) => a + b, 0) /
             dayEntry.solar_zenith_angle.length
-          : null,
+          : null, // Mean
       };
     });
 

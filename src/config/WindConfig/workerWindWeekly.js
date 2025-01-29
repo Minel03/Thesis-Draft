@@ -96,15 +96,11 @@ self.onmessage = async (e) => {
     const aggregatedData = Object.values(weeklyData).map((weekEntry) => {
       return {
         week: weekEntry.week,
-        wind_power: weekEntry.wind_power,
-        wind_speed: weekEntry.wind_speed.length
-          ? weekEntry.wind_speed.reduce((a, b) => a + b, 0) /
-            weekEntry.wind_speed.length
-          : null,
-        dew_point: weekEntry.dew_point.length
-          ? weekEntry.dew_point.reduce((a, b) => a + b, 0) /
-            weekEntry.dew_point.length
-          : null,
+        wind_power: weekEntry.wind_power, // Keep sum
+        wind_speed:
+          weekEntry.count > 0 ? weekEntry.wind_speed / weekEntry.count : 0, // Mean
+        dew_point:
+          weekEntry.count > 0 ? weekEntry.dew_point / weekEntry.count : 0, // Mean
       };
     });
 
