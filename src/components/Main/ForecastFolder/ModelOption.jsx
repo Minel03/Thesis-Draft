@@ -1,8 +1,17 @@
 import React from "react";
-
+import { useLocation } from "react-router-dom";
+import { useEffect, useState } from "react";
 const ModelOption = () => {
+  const location = useLocation();
+  const [filename, setFilename] = useState(
+    location.state?.filename ||
+      localStorage.getItem("uploadedFilename") ||
+      "No file selected"
+  );
+
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex flex-col items-center">
+      <p>Selected File: {filename}</p>
       <h1 className="text-2xl font-bold mb-6">Model Options</h1>
 
       <button

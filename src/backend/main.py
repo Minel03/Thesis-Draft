@@ -83,3 +83,24 @@ async def upload_file(file: UploadFile = File(...)):
     except Exception as e:
         print(f"Error storing the file: {str(e)}")  # Debugging
         return {"error": f"Error storing the file: {str(e)}"}
+@app.get("/storage/latest-file/")
+async def get_latest_file():
+    try:
+        db_conn = get_db_connection()
+        cursor = db_conn.cursor(dictionary=True)
+
+        # Retrieve the latest uploaded file
+        query = "SELECT filename FROM hourly_data ORDER BY id DESC LIMIT 1"
+        cursor.execute(query)
+        result = cursor.fetchone()
+
+        cursor.close()
+        db_conn.close()
+
+        if result:
+            return {"filename": result["filename"]}
+        else:
+            return {"error": "No files found in the database."}
+
+    except Exception as e:
+        return {"error": f"Error retrieving the file: {str(e)}"}

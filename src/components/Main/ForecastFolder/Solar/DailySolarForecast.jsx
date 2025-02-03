@@ -71,6 +71,7 @@ const DailySolarForecast = () => {
       const result = await response.json();
       if (response.ok) {
         setMessage("JSON file successfully stored.");
+        await fetchLatestFilename(); // Fetch filename after uploading
         setTimeout(() => {
           navigate("/ModelOption");
         }, 1500);
@@ -79,6 +80,24 @@ const DailySolarForecast = () => {
       }
     } catch (error) {
       setMessage(`Error storing JSON: ${error.message}`);
+    }
+  };
+
+  const fetchLatestFilename = async () => {
+    try {
+      const response = await fetch(
+        "http://127.0.0.1:8000/storage/latest-file/"
+      );
+      const result = await response.json();
+
+      if (result.filename) {
+        localStorage.setItem("uploadedFilename", result.filename); // ✅ Store in localStorage
+        navigate("/ModelOption", { state: { filename: result.filename } });
+      } else {
+        setMessage("Error retrieving filename.");
+      }
+    } catch (error) {
+      setMessage(`Error fetching filename: ${error.message}`);
     }
   };
 
