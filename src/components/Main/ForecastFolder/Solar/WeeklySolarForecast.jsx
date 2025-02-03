@@ -6,7 +6,7 @@ const WeeklySolarForecast = () => {
   const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
   const [isUploadDisabled, setIsUploadDisabled] = useState(false);
-  const [setIsNextDisabled] = useState(true);
+  const [isNextDisabled, setIsNextDisabled] = useState(true);
   const navigate = useNavigate();
 
   const handleFileChange = (event) => {
