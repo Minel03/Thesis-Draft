@@ -9,3 +9,4 @@ export { default as DailyWindForecast } from "./ForecastFolder/Wind/DailyWindFor
 export { default as DailySolarForecast } from "./ForecastFolder/Solar/DailySolarForecast";
 export { default as WeeklyWindForecast } from "./ForecastFolder/Wind/WeeklyWindForecast";
 export { default as WeeklySolarForecast } from "./ForecastFolder/Solar/WeeklySolarForecast";
+export { default as ModelOption } from "./ForecastFolder/ModelOption";

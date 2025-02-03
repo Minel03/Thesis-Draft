@@ -3,7 +3,6 @@ from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
 import os
 import re
-import json
 
 app = FastAPI()
 
@@ -37,21 +36,19 @@ async def upload_file(file: UploadFile = File(...)):
         print(f"Received file: {filename}")  # Debugging
 
         # Determine subfolder based on filename pattern
-        if re.match(r"^daily_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z.json$", filename):
-            subfolder = "daily"
-            table_name = "daily_data"
-        elif re.match(r"^hourly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z.json$", filename):
+        if re.match(r"^hourly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
             subfolder = "hourly"
             table_name = "hourly_data"
-        elif re.match(r"^weekly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z.json$", filename):
+        elif re.match(r"^daily_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
+            subfolder = "daily"
+            table_name = "daily_data"
+        elif re.match(r"^weekly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
             subfolder = "weekly"
             table_name = "weekly_data"
         else:
+            print(f"No match found! Assigning to 'others' folder. Filename: {filename}")
             subfolder = "others"
-            table_name = None  # Skip database insertion for unknown files
-
-        # Debugging: Check the subfolder determined
-        print(f"Determined subfolder: {subfolder}")
+            table_name = None
 
         # Ensure the correct subfolder exists
         target_folder = os.path.join(BASE_STORAGE_PATH, subfolder)
@@ -65,19 +62,19 @@ async def upload_file(file: UploadFile = File(...)):
 
         print(f"File saved to: {file_location}")  # Debugging
 
-        # Insert into database if valid
+        # Insert filename into database if valid
         if table_name:
             db_conn = get_db_connection()
             cursor = db_conn.cursor()
 
-            try:
-                query = f"INSERT INTO {table_name} (filename, data) VALUES (%s, %s)"
-                cursor.execute(query, (filename, json.dumps(json.loads(content.decode("utf-8")))))
-                db_conn.commit()
-                print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
-            except Exception as e:
-                print(f"Database Error: {str(e)}")  # Print any DB error
-
+        try:
+            query = f"INSERT INTO {table_name} (filename) VALUES (%s)"
+            cursor.execute(query, (filename,))
+            db_conn.commit()
+            print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
+        except Exception as e:
+            print(f"Database Error: {str(e)}")  # Print any DB error
+        finally:
             cursor.close()
             db_conn.close()
 

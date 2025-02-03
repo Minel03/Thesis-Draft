@@ -1,82 +1,65 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const HourlySolarForecast = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [file, setFile] = useState(null);
   const [message, setMessage] = useState("");
+  const [isUploadDisabled, setIsUploadDisabled] = useState(false);
+  const [setIsNextDisabled] = useState(true);
+  const navigate = useNavigate();
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
     setFile(selectedFile);
-
-    if (selectedFile) {
-      setIsProcessing(true);
-
-      // Create a worker
-      const worker = new Worker(
-        new URL(
-          "../../../../config/SolarConfig/workerSolarHourly.js",
-          import.meta.url
-        )
-      );
-      worker.onmessage = (e) => {
-        const { type, data, error } = e.data;
-
-        if (type === "complete") {
-          worker.terminate();
-          uploadJsonToStorage(data); // Insert JSON into storage folder when done
-          setIsProcessing(false);
-        } else if (type === "error") {
-          console.error("Error processing file:", error);
-          worker.terminate();
-          setIsProcessing(false);
-        }
-      };
-
-      // Pass the file to the worker
-      worker.postMessage({ file: selectedFile });
-    }
+    setMessage("");
+    setIsUploadDisabled(false);
   };
 
-  const handleUpload = async () => {
+  const handleUpload = () => {
     if (!file) {
-      setMessage("Please select a file.");
+      setMessage("Please select a file before uploading.");
       return;
     }
 
-    const formData = new FormData();
-    formData.append("file", file);
+    setIsProcessing(true);
+    setIsUploadDisabled(true);
 
-    try {
-      const response = await fetch("http://127.0.0.1:8000/upload/", {
-        method: "POST",
-        body: formData,
-      });
+    // Create a worker
+    const worker = new Worker(
+      new URL(
+        "../../../../config/SolarConfig/workerSolarHourly.js",
+        import.meta.url
+      )
+    );
 
-      const result = await response.json();
-      if (response.ok) {
-        setMessage(`File uploaded successfully. Path: ${result.json_path}`);
-      } else {
-        setMessage(`Error: ${result.detail}`);
+    worker.onmessage = (e) => {
+      const { type, data, error } = e.data;
+
+      if (type === "complete") {
+        worker.terminate();
+        uploadJsonToStorage(data);
+        setIsProcessing(false);
+        setIsNextDisabled(false);
+      } else if (type === "error") {
+        console.error("Error processing file:", error);
+        worker.terminate();
+        setIsProcessing(false);
       }
-    } catch (error) {
-      setMessage(`Error: ${error.message}`);
-    }
+    };
+
+    // Pass the file to the worker
+    worker.postMessage({ file });
   };
 
   const uploadJsonToStorage = async (data) => {
     const formData = new FormData();
-
-    // Create a unique filename using a timestamp
     const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
     const filename = `hourly_solar_data_${timestamp}.json`;
-
-    // Convert data to a Blob
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
 
-    // Append the file to the FormData with the unique filename
     formData.append("file", blob, filename);
 
     try {
@@ -87,7 +70,10 @@ const HourlySolarForecast = () => {
 
       const result = await response.json();
       if (response.ok) {
-        setMessage(`JSON file successfully stored.`);
+        setMessage("JSON file successfully stored.");
+        setTimeout(() => {
+          navigate("/ModelOption");
+        }, 1500);
       } else {
         setMessage(`Error: ${result.detail}`);
       }
@@ -108,10 +94,15 @@ const HourlySolarForecast = () => {
         className="mb-4 p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         disabled={isProcessing}
       />
-      {message && <p className="mb-6 text-red-500">{message}</p>}
-      {isProcessing && <p>Processing file... Please wait.</p>}
+      {message && <p className="mb-4 text-red-500">{message}</p>}
+      <button
+        onClick={handleUpload}
+        className="px-4 py-2 bg-blue-500 text-white rounded-md shadow-md hover:bg-blue-600 disabled:bg-gray-400"
+        disabled={isProcessing || !file || isUploadDisabled}>
+        {isProcessing ? "Processing..." : "Next"}
+      </button>
     </div>
   );
 };
 
-export default HourlySolarForecast; // Ensure default export is used
+export default HourlySolarForecast;

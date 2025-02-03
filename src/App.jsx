@@ -12,6 +12,7 @@ import {
 } from "./components/Main";
 import { SolarForecastOptions } from "./components/Main";
 import { WindForecastOptions } from "./components/Main";
+import { ModelOption } from "./components/Main";
 
 const App = () => {
   return (
@@ -21,8 +22,8 @@ const App = () => {
         <div className="flex-grow">
           <Routes>
             <Route path="/" element={<Dashboard />} />
-            <Route path="/model" element={<Models />} />
-            <Route path="/forecast" element={<Forecast />} />
+            <Route path="/Model" element={<Models />} />
+            <Route path="/Forecast" element={<Forecast />} />
             <Route
               path="/SolarForecastOptions"
               element={<SolarForecastOptions />}
@@ -52,6 +53,7 @@ const App = () => {
               path="/WeeklySolarForecast"
               element={<WeeklySolarForecast />}
             />
+            <Route path="/ModelOption" element={<ModelOption />} />
             {/* Add other routes here */}
           </Routes>
         </div>
