@@ -118,7 +118,7 @@ const HourlySolarForecast = () => {
         onClick={handleUpload}
         className="px-4 py-2 bg-blue-500 text-white rounded-md shadow-md hover:bg-blue-600 disabled:bg-gray-400"
         disabled={isProcessing || !file || isUploadDisabled}>
-        {isProcessing ? "Processing..." : "Next"}
+        {isProcessing ? "Processing..." : "Upload"}
       </button>
     </div>
   );
