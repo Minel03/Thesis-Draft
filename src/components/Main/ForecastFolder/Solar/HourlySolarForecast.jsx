@@ -11,9 +11,53 @@ const HourlySolarForecast = () => {
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
-    setFile(selectedFile);
-    setMessage("");
-    setIsUploadDisabled(false);
+
+    if (!selectedFile) {
+      setMessage("Please select a valid file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split("\n");
+
+      if (lines.length < 2) {
+        setMessage("Invalid CSV format.");
+        return;
+      }
+
+      // Extract header and rows
+      const headers = lines[0].split(",").map((h) => h.trim());
+      const rows = lines
+        .slice(1)
+        .map((line) => line.split(",").map((v) => v.trim()));
+
+      const timeIndex = headers.indexOf("time");
+      if (timeIndex === -1) {
+        setMessage("CSV must contain a 'time' column.");
+        return;
+      }
+
+      // Check all rows' timestamps for hourly format
+      for (let i = 0; i < rows.length; i++) {
+        const timestamp = rows[i][timeIndex];
+        if (!/^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/.test(timestamp)) {
+          setMessage(
+            `Error: Timestamp on row ${
+              i + 1
+            } is not on the hour (e.g., 2024-02-05T14:00:00).`
+          );
+          return;
+        }
+      }
+
+      setFile(selectedFile);
+      setMessage("");
+      setIsUploadDisabled(false);
+    };
+
+    reader.readAsText(selectedFile);
   };
 
   const handleUpload = () => {
@@ -54,7 +98,11 @@ const HourlySolarForecast = () => {
 
   const uploadJsonToStorage = async (data) => {
     const formData = new FormData();
-    const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
+    const timestamp = new Date()
+      .toISOString()
+      .replace(/[:.-]/g, "_")
+      .replace("T", "_");
+
     const filename = `hourly_solar_data_${timestamp}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
