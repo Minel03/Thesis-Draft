@@ -14,6 +14,7 @@ self.onmessage = async (e) => {
     let isHeaderParsed = false;
     let headers = [];
     let firstTimestampChecked = false;
+    let jsonData = [];
 
     while (true) {
       const { done, value } = await reader.read();
@@ -35,7 +36,7 @@ self.onmessage = async (e) => {
           if (values.length !== headers.length) continue;
 
           const row = headers.reduce((acc, header, i) => {
-            acc[header] = values[i] ?? "";
+            acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
             return acc;
           }, {});
 
@@ -54,11 +55,23 @@ self.onmessage = async (e) => {
           if (!firstTimestampChecked) {
             firstTimestampChecked = true;
           }
+
+          // Convert to desired JSON format
+          jsonData.push({
+            hour: timestamp.slice(0, 13), // Extract YYYY-MM-DDTHH
+            solar_power: row["solar_power"] ?? 0,
+            dhi: row["dhi"] ?? 0,
+            dni: row["dni"] ?? 0,
+            ghi: row["ghi"] ?? 0,
+            temperature: row["temperature"] ?? 0,
+            relative_humidity: row["relative_humidity"] ?? 0,
+            solar_zenith_angle: row["solar_zenith_angle"] ?? 0,
+          });
         }
       }
     }
 
-    self.postMessage({ type: "complete", data: "Validation passed" });
+    self.postMessage({ type: "complete", data: jsonData });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }

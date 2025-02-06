@@ -67,30 +67,31 @@ async def upload_file(file: UploadFile = File(...)):
             db_conn = get_db_connection()
             cursor = db_conn.cursor()
 
-        try:
-            query = f"INSERT INTO {table_name} (filename) VALUES (%s)"
-            cursor.execute(query, (filename,))
-            db_conn.commit()
-            print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
-        except Exception as e:
-            print(f"Database Error: {str(e)}")  # Print any DB error
-        finally:
-            cursor.close()
-            db_conn.close()
+            try:
+                query = f"INSERT INTO {table_name} (filename) VALUES (%s)"
+                cursor.execute(query, (filename,))
+                db_conn.commit()
+                print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
+            except Exception as e:
+                print(f"Database Error: {str(e)}")  # Print any DB error
+            finally:
+                cursor.close()  # ✅ Only close cursor if initialized
+                db_conn.close()
 
         return {"status": "File uploaded successfully", "file_path": file_location}
-    
+
     except Exception as e:
         print(f"Error storing the file: {str(e)}")  # Debugging
         return {"error": f"Error storing the file: {str(e)}"}
+
 @app.get("/storage/latest-file/")
 async def get_latest_file():
     try:
         db_conn = get_db_connection()
         cursor = db_conn.cursor(dictionary=True)
 
-        # Retrieve the latest uploaded file
-        query = "SELECT filename FROM hourly_data ORDER BY id DESC LIMIT 1"
+        # Retrieve the latest uploaded file's id and filename
+        query = "SELECT id, filename FROM hourly_data ORDER BY id DESC LIMIT 1"
         cursor.execute(query)
         result = cursor.fetchone()
 
@@ -98,9 +99,10 @@ async def get_latest_file():
         db_conn.close()
 
         if result:
-            return {"filename": result["filename"]}
+            return {"id": result["id"], "filename": result["filename"]}
         else:
             return {"error": "No files found in the database."}
 
     except Exception as e:
         return {"error": f"Error retrieving the file: {str(e)}"}
+

@@ -44,12 +44,32 @@ const HourlySolarForecast = () => {
         const timestamp = rows[i][timeIndex];
         if (!/^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/.test(timestamp)) {
           setMessage(
-            `Error: Timestamp on row ${
+            `Timestamp on row ${
               i + 1
             } is not on the hour (e.g., 2024-02-05T14:00:00).`
           );
           return;
         }
+      }
+
+      // Check for missing required fields and notify the user
+      const requiredColumns = [
+        "solar_power",
+        "dhi",
+        "dni",
+        "ghi",
+        "temperature",
+        "relative_humidity",
+        "solar_zenith_angle",
+      ];
+
+      const missingColumns = requiredColumns.filter(
+        (col) => !headers.includes(col)
+      );
+
+      if (missingColumns.length > 0) {
+        setMessage(`Missing required columns: ${missingColumns.join(", ")}`);
+        return;
       }
 
       setFile(selectedFile);
@@ -89,6 +109,7 @@ const HourlySolarForecast = () => {
         console.error("Error processing file:", error);
         worker.terminate();
         setIsProcessing(false);
+        setMessage(error); // Show error from worker
       }
     };
 
@@ -98,10 +119,7 @@ const HourlySolarForecast = () => {
 
   const uploadJsonToStorage = async (data) => {
     const formData = new FormData();
-    const timestamp = new Date()
-      .toISOString()
-      .replace(/[:.-]/g, "_")
-      .replace("T", "_");
+    const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
 
     const filename = `hourly_solar_data_${timestamp}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], {
@@ -120,9 +138,6 @@ const HourlySolarForecast = () => {
       if (response.ok) {
         setMessage("JSON file successfully stored.");
         await fetchLatestFilename(); // Fetch filename after uploading
-        setTimeout(() => {
-          navigate("/ModelOption");
-        }, 1500);
       } else {
         setMessage(`Error: ${result.detail}`);
       }
@@ -140,7 +155,9 @@ const HourlySolarForecast = () => {
 
       if (result.filename) {
         localStorage.setItem("uploadedFilename", result.filename); // ✅ Store in localStorage
-        navigate("/ModelOption", { state: { filename: result.filename } });
+        setTimeout(() => {
+          navigate("/ModelOption", { state: { filename: result.filename } });
+        }, 3000); // 30-second delay
       } else {
         setMessage("Error retrieving filename.");
       }
