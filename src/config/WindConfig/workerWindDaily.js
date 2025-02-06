@@ -7,95 +7,80 @@ self.onmessage = async (e) => {
   }
 
   try {
-    const CHUNK_SIZE = 1024 * 1024; // 1 MB per chunk
     const reader = file.stream().getReader();
     const decoder = new TextDecoder("utf-8");
 
     let buffer = "";
     let isHeaderParsed = false;
     let headers = [];
-    let rawData = [];
+    let jsonData = [];
+
+    let timeIndex, windPowerIndex, windSpeedIndex, dewPointIndex;
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop();
+      buffer = lines.pop(); // Keep last incomplete line
 
       for (const line of lines) {
         const cleanLine = line.trim();
+
+        // 🚀 Skip completely empty lines
         if (!cleanLine) continue;
 
         if (!isHeaderParsed) {
           headers = cleanLine.split(",").map((h) => h.trim());
-          console.log("Headers:", headers); // Debug the headers
           isHeaderParsed = true;
+
+          // Find column indexes
+          timeIndex = headers.indexOf("date");
+          windPowerIndex = headers.indexOf("wind_power");
+          windSpeedIndex = headers.indexOf("wind_speed");
+          dewPointIndex = headers.indexOf("dew_point");
+
+          if (
+            timeIndex === -1 ||
+            windPowerIndex === -1 ||
+            windSpeedIndex === -1 ||
+            dewPointIndex === -1
+          ) {
+            self.postMessage({
+              type: "error",
+              error: "Missing required columns in CSV.",
+            });
+            return;
+          }
         } else {
           const values = cleanLine.split(",").map((v) => v.trim());
+
+          // 🚀 Skip rows with missing values
           if (values.length !== headers.length) continue;
 
           const row = headers.reduce((acc, header, i) => {
-            acc[header] = values[i] ?? "";
+            acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
             return acc;
           }, {});
 
-          const dateTime = new Date(row["time"] + "Z");
-          if (isNaN(dateTime)) continue;
+          const timestamp = row["date"];
+          if (!timestamp || !/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
+            console.warn(`Skipping invalid timestamp: ${timestamp}`);
+            continue;
+          }
 
-          const dayKey = dateTime.toISOString().slice(0, 10); // YYYY-MM-DD
-
-          rawData.push({
-            day: dayKey,
-            wind_power: parseFloat(row["wind_power"]) || 0,
-            wind_speed: parseFloat(row["Wind Speed"]) || 0, // Ensure this is exactly the same as the CSV header
-            dew_point: parseFloat(row["Dew Point"]) || null, // Ensure this is exactly the same as the CSV header
+          jsonData.push({
+            date: row["date"],
+            wind_power: row["wind_power"] ?? 0,
+            wind_speed: row["wind_speed"] ?? 0,
+            dew_point: row["dew_point"] ?? 0,
           });
         }
       }
     }
 
-    // Aggregate by day
-    const dailyData = {};
-    rawData.forEach((row) => {
-      if (!dailyData[row.day]) {
-        dailyData[row.day] = {
-          day: row.day,
-          wind_power: 0,
-          wind_speed: [],
-          dew_point: [],
-          count: 0,
-        };
-      }
-
-      dailyData[row.day].wind_power += row.wind_power;
-      if (row.wind_speed !== null)
-        dailyData[row.day].wind_speed.push(row.wind_speed);
-      if (row.dew_point !== null)
-        dailyData[row.day].dew_point.push(row.dew_point);
-
-      dailyData[row.day].count++;
-    });
-
-    // Compute averages where needed
-    const aggregatedData = Object.values(dailyData).map((dayEntry) => {
-      return {
-        day: dayEntry.day,
-        wind_power: dayEntry.wind_power, // Keep sum
-        wind_speed:
-          dayEntry.count > 0
-            ? dayEntry.wind_speed.reduce((a, b) => a + b, 0) / dayEntry.count
-            : 0, // Mean
-        dew_point:
-          dayEntry.count > 0
-            ? dayEntry.dew_point.reduce((a, b) => a + b, 0) / dayEntry.count
-            : 0, // Mean
-      };
-    });
-
-    self.postMessage({ type: "complete", data: aggregatedData });
+    self.postMessage({ type: "complete", data: jsonData });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }

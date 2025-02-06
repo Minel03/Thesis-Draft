@@ -11,10 +11,40 @@ const WeeklyWindForecast = () => {
 
   const handleFileChange = (event) => {
     const selectedFile = event.target.files[0];
-    setFile(selectedFile);
-    setMessage("");
-    setIsUploadDisabled(false);
-    setIsNextDisabled(true);
+
+    if (!selectedFile) {
+      setMessage("Please select a valid file.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target.result;
+      const lines = text.split("\n");
+
+      if (lines.length < 2) {
+        setMessage("Invalid CSV format.");
+        return;
+      }
+
+      // Extract header and rows
+      const headers = lines[0].split(",").map((h) => h.trim());
+      const rows = lines
+        .slice(1)
+        .map((line) => line.split(",").map((v) => v.trim()));
+
+      const timeIndex = headers.indexOf("week");
+      if (timeIndex === -1) {
+        setMessage("CSV must contain a 'week' column.");
+        return;
+      }
+
+      setFile(selectedFile);
+      setMessage("");
+      setIsUploadDisabled(false);
+    };
+
+    reader.readAsText(selectedFile);
   };
 
   const handleUpload = () => {
@@ -46,17 +76,17 @@ const WeeklyWindForecast = () => {
         console.error("Error processing file:", error);
         worker.terminate();
         setIsProcessing(false);
+        setMessage(error);
       }
     };
 
-    // Pass the file to the worker
     worker.postMessage({ file });
   };
 
   const uploadJsonToStorage = async (data) => {
     const formData = new FormData();
     const timestamp = new Date().toISOString().replace(/[:.-]/g, "_");
-    const filename = `Weekly_wind_data_${timestamp}.json`;
+    const filename = `weekly_wind_data_${timestamp}.json`;
     const blob = new Blob([JSON.stringify(data, null, 2)], {
       type: "application/json",
     });
@@ -68,14 +98,10 @@ const WeeklyWindForecast = () => {
         method: "POST",
         body: formData,
       });
-
       const result = await response.json();
       if (response.ok) {
         setMessage("JSON file successfully stored.");
-        await fetchLatestFilename(); // Fetch filename after uploading
-        setTimeout(() => {
-          navigate("/ModelOption");
-        }, 1500);
+        await fetchLatestFilename();
       } else {
         setMessage(`Error: ${result.detail}`);
       }
@@ -85,15 +111,19 @@ const WeeklyWindForecast = () => {
   };
 
   const fetchLatestFilename = async () => {
+    const dataType = "weekly";
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/storage/latest-file/"
+        `http://127.0.0.1:8000/storage/latest-file/?data_type=${dataType}`
       );
       const result = await response.json();
 
       if (result.filename) {
-        localStorage.setItem("uploadedFilename", result.filename); // ✅ Store in localStorage
-        navigate("/ModelOption", { state: { filename: result.filename } }); // possible pede ipass through diretso sa models
+        setTimeout(() => {
+          navigate("/ModelOption", {
+            state: { filename: result.filename, id: result.id },
+          });
+        }, 3000);
       } else {
         setMessage("Error retrieving filename.");
       }

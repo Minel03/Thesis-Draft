@@ -7,30 +7,26 @@ self.onmessage = async (e) => {
   }
 
   try {
-    const CHUNK_SIZE = 1024 * 1024; // 1 MB per chunk
     const reader = file.stream().getReader();
     const decoder = new TextDecoder("utf-8");
 
-    let buffer = ""; // Buffer for incomplete lines
+    let buffer = "";
     let isHeaderParsed = false;
     let headers = [];
-    let rawData = []; // Store raw minute-level data
+    let firstTimestampChecked = false;
+    let jsonData = [];
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      // Decode the chunk
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
-
-      // Split the buffer into lines
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
-      buffer = lines.pop(); // Keep the last incomplete line for the next chunk
+      buffer = lines.pop(); // Keep the last incomplete line
 
       for (const line of lines) {
         const cleanLine = line.trim();
-        if (!cleanLine) continue; // Skip empty lines
+        if (!cleanLine) continue;
 
         if (!isHeaderParsed) {
           headers = cleanLine.split(",").map((h) => h.trim());
@@ -40,71 +36,38 @@ self.onmessage = async (e) => {
           if (values.length !== headers.length) continue;
 
           const row = headers.reduce((acc, header, i) => {
-            acc[header] = values[i] ?? "";
+            acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
             return acc;
           }, {});
 
-          const dateTime = new Date(row["time"] + "Z");
-          if (isNaN(dateTime)) continue;
+          const timestamp = row["time"];
+          if (!timestamp) continue;
 
-          const hourKey = dateTime.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+          // Validate hourly timestamp format (YYYY-MM-DDTHH:00:00)
+          if (!/^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/.test(timestamp)) {
+            self.postMessage({
+              type: "error",
+              error: `Invalid timestamp detected: ${timestamp}. Only hourly timestamps are allowed.`,
+            });
+            return;
+          }
 
-          rawData.push({
-            hour: hourKey,
-            wind_power: parseFloat(row["wind_power"]) || 0,
-            wind_speed: parseFloat(row["Wind Speed"]) || 0,
-            dew_point: parseFloat(row["Dew Point"]) || null,
+          if (!firstTimestampChecked) {
+            firstTimestampChecked = true;
+          }
+
+          // Convert to desired JSON format
+          jsonData.push({
+            hour: timestamp.slice(0, 13), // Extract YYYY-MM-DDTHH
+            wind_power: row["wind_power"] ?? 0,
+            wind_speed: row["wind_speed"] ?? 0,
+            dew_point: row["dew_point"] ?? 0,
           });
         }
       }
     }
 
-    // Aggregate by hour
-    const hourlyData = {};
-    rawData.forEach((row) => {
-      if (!hourlyData[row.hour]) {
-        hourlyData[row.hour] = {
-          hour: row.hour,
-          wind_power: 0,
-          wind_speed: [],
-          dew_point: [],
-          count: 0,
-        };
-      }
-
-      hourlyData[row.hour].wind_power += row.wind_power;
-      if (row.wind_speed !== null)
-        hourlyData[row.hour].wind_speed.push(row.wind_speed);
-      if (row.dew_point !== null)
-        hourlyData[row.hour].dew_point.push(row.dew_point);
-
-      hourlyData[row.hour].count++;
-    });
-
-    // Compute averages where needed
-    const aggregatedData = Object.values(hourlyData).map((hourEntry) => {
-      const averageWindSpeed =
-        hourEntry.wind_speed.length > 0
-          ? hourEntry.wind_speed.reduce((sum, value) => sum + value, 0) /
-            hourEntry.wind_speed.length
-          : 0;
-
-      const averageDewPoint =
-        hourEntry.dew_point.length > 0
-          ? hourEntry.dew_point.reduce((sum, value) => sum + value, 0) /
-            hourEntry.dew_point.length
-          : 0;
-
-      return {
-        hour: hourEntry.hour,
-        wind_power: hourEntry.wind_power, // Keep sum
-        wind_speed: averageWindSpeed, // Mean
-        dew_point: averageDewPoint, // Mean
-      };
-    });
-
-    // Send the aggregated data back to the main thread
-    self.postMessage({ type: "complete", data: aggregatedData });
+    self.postMessage({ type: "complete", data: jsonData });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }

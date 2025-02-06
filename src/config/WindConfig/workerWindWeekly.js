@@ -7,34 +7,19 @@ self.onmessage = async (e) => {
   }
 
   try {
-    const CHUNK_SIZE = 1024 * 1024; // 1 MB per chunk
     const reader = file.stream().getReader();
     const decoder = new TextDecoder("utf-8");
 
     let buffer = "";
     let isHeaderParsed = false;
     let headers = [];
-    let rawData = [];
-
-    // Function to calculate the ISO week number
-    function getISOWeek(date) {
-      const tempDate = new Date(
-        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-      );
-      const dayNum = tempDate.getUTCDay() || 7; // Make Sunday (0) become 7
-      tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
-      const weekNumber = Math.ceil(((tempDate - yearStart) / 86400000 + 1) / 7);
-
-      return { year: tempDate.getUTCFullYear(), week: weekNumber };
-    }
+    let jsonData = {};
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop();
 
@@ -42,80 +27,65 @@ self.onmessage = async (e) => {
         const cleanLine = line.trim();
         if (!cleanLine) continue;
 
+        // Parse the headers once
         if (!isHeaderParsed) {
           headers = cleanLine.split(",").map((h) => h.trim());
           isHeaderParsed = true;
-        } else {
-          const values = cleanLine.split(",").map((v) => v.trim());
-          if (values.length !== headers.length) continue;
 
-          const row = headers.reduce((acc, header, i) => {
-            acc[header] = values[i] ?? "";
-            return acc;
-          }, {});
+          // Define required columns
+          const requiredColumns = ["wind_power", "wind_speed", "dew_point"];
 
-          const dateTime = new Date(row["time"] + "Z");
-          if (isNaN(dateTime)) continue;
-
-          // Get correctly formatted ISO week
-          const { year, week } = getISOWeek(dateTime);
-          const weekKey = `${year}-W${week.toString().padStart(2, "0")}`;
-
-          rawData.push({
-            week: weekKey,
-            wind_power: parseFloat(row["wind_power"]) || 0,
-            wind_speed: parseFloat(row["Wind Speed"]) || 0,
-            dew_point: parseFloat(row["Dew Point"]) || null,
-          });
+          // Check for missing columns
+          const missingColumns = requiredColumns.filter(
+            (col) => !headers.includes(col)
+          );
+          if (missingColumns.length > 0) {
+            self.postMessage({
+              type: "error",
+              error: `Missing required columns: ${missingColumns.join(", ")}`,
+            });
+            return;
+          }
+          continue; // Move to the next line after parsing headers
         }
+
+        // Process data rows
+        const values = cleanLine.split(",").map((v) => v.trim());
+        if (values.length !== headers.length) continue;
+
+        const row = headers.reduce((acc, header, i) => {
+          acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
+          return acc;
+        }, {});
+
+        // Validate timestamp format
+        const timestamp = row["week"];
+        if (!timestamp || !/^\d{4}-W\d{2}$/.test(timestamp)) {
+          self.postMessage({
+            type: "error",
+            error: `Invalid timestamp detected: ${timestamp}. Only weekly timestamps (YYYY-W##) are allowed.`,
+          });
+          return;
+        }
+
+        if (!jsonData[timestamp]) {
+          jsonData[timestamp] = {
+            week: timestamp,
+            wind_power: 0,
+            wind_speed: 0,
+            dew_point: 0,
+            count: 0,
+          };
+        }
+
+        jsonData[timestamp].wind_power += row["wind_power"] ?? 0;
+        jsonData[timestamp].wind_speed += row["wind_speed"] ?? 0;
+        jsonData[timestamp].dew_point += row["dew_point"] ?? 0;
+        jsonData[timestamp].count += 1;
       }
     }
 
-    // Aggregate by week
-    const weeklyData = {};
-    rawData.forEach((row) => {
-      if (!weeklyData[row.week]) {
-        weeklyData[row.week] = {
-          week: row.week,
-          wind_power: 0,
-          wind_speed: [],
-          dew_point: [],
-          count: 0,
-        };
-      }
-
-      weeklyData[row.week].wind_power += row.wind_power;
-      if (row.wind_speed !== null)
-        weeklyData[row.week].wind_speed.push(row.wind_speed);
-      if (row.dew_point !== null)
-        weeklyData[row.week].dew_point.push(row.dew_point);
-
-      weeklyData[row.week].count++;
-    });
-
-    // Compute averages where needed
-    const aggregatedData = Object.values(weeklyData).map((weekEntry) => {
-      const averageWindSpeed =
-        weekEntry.wind_speed.length > 0
-          ? weekEntry.wind_speed.reduce((sum, value) => sum + value, 0) /
-            weekEntry.wind_speed.length
-          : 0;
-
-      const averageDewPoint =
-        weekEntry.dew_point.length > 0
-          ? weekEntry.dew_point.reduce((sum, value) => sum + value, 0) /
-            weekEntry.dew_point.length
-          : 0;
-
-      return {
-        week: weekEntry.week,
-        wind_power: weekEntry.wind_power, // Keep sum
-        wind_speed: averageWindSpeed, // Mean
-        dew_point: averageDewPoint, // Mean
-      };
-    });
-
-    self.postMessage({ type: "complete", data: aggregatedData });
+    self.postMessage({ type: "complete", data: Object.values(jsonData) });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }
