@@ -7,33 +7,19 @@ self.onmessage = async (e) => {
   }
 
   try {
-    const CHUNK_SIZE = 1024 * 1024; // 1 MB per chunk
     const reader = file.stream().getReader();
     const decoder = new TextDecoder("utf-8");
 
     let buffer = "";
     let isHeaderParsed = false;
     let headers = [];
-    let rawData = [];
-
-    function getISOWeek(date) {
-      const tempDate = new Date(
-        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-      );
-      const dayNum = tempDate.getUTCDay() || 7; // Make Sunday (0) become 7
-      tempDate.setUTCDate(tempDate.getUTCDate() + 4 - dayNum);
-      const yearStart = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 1));
-      const weekNumber = Math.ceil(((tempDate - yearStart) / 86400000 + 1) / 7);
-
-      return { year: tempDate.getUTCFullYear(), week: weekNumber };
-    }
+    let jsonData = {};
 
     while (true) {
       const { done, value } = await reader.read();
       if (done) break;
 
-      const chunk = decoder.decode(value, { stream: true });
-      buffer += chunk;
+      buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop();
 
@@ -41,95 +27,91 @@ self.onmessage = async (e) => {
         const cleanLine = line.trim();
         if (!cleanLine) continue;
 
+        // Parse the headers once
         if (!isHeaderParsed) {
           headers = cleanLine.split(",").map((h) => h.trim());
           isHeaderParsed = true;
-        } else {
-          const values = cleanLine.split(",").map((v) => v.trim());
-          if (values.length !== headers.length) continue;
 
-          const row = headers.reduce((acc, header, i) => {
-            acc[header] = values[i] ?? "";
-            return acc;
-          }, {});
+          // Define required columns
+          const requiredColumns = [
+            "week",
+            "solar_power",
+            "dhi",
+            "dni",
+            "ghi",
+            "temperature",
+            "relative_humidity",
+            "solar_zenith_angle",
+          ];
 
-          const dateTime = new Date(row["time"] + "Z");
-          if (isNaN(dateTime)) continue;
-
-          // Get correctly formatted ISO week
-          const { year, week } = getISOWeek(dateTime);
-          const weekKey = `${year}-W${week.toString().padStart(2, "0")}`;
-
-          rawData.push({
-            week: weekKey,
-            solar_power: parseFloat(row["solar_power"]) || 0,
-            dhi: parseFloat(row["DHI"]) || 0,
-            dni: parseFloat(row["DNI"]) || 0,
-            ghi: parseFloat(row["GHI"]) || 0,
-            temperature: parseFloat(row["Temperature"]) || null,
-            relative_humidity: parseFloat(row["Relative Humidity"]) || null,
-            solar_zenith_angle: parseFloat(row["Solar Zenith Angle"]) || null,
-          });
+          // Check for missing columns
+          const missingColumns = requiredColumns.filter(
+            (col) => !headers.includes(col)
+          );
+          if (missingColumns.length > 0) {
+            self.postMessage({
+              type: "error",
+              error: `Missing required columns: ${missingColumns.join(", ")}`,
+            });
+            return;
+          }
+          continue; // Move to the next line after parsing headers
         }
+
+        // Process data rows
+        const values = cleanLine.split(",").map((v) => v.trim());
+        if (values.length !== headers.length) continue;
+
+        const row = headers.reduce((acc, header, i) => {
+          acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
+          return acc;
+        }, {});
+
+        // Validate timestamp format
+        const timestamp = row["week"];
+        if (!timestamp || !/^\d{4}-W\d{2}$/.test(timestamp)) {
+          self.postMessage({
+            type: "error",
+            error: `Invalid timestamp detected: ${timestamp}. Only weekly timestamps (YYYY-W##) are allowed.`,
+          });
+          return;
+        }
+
+        if (!jsonData[timestamp]) {
+          jsonData[timestamp] = {
+            week: timestamp,
+            solar_power: 0,
+            dhi: 0,
+            dni: 0,
+            ghi: 0,
+            temperature: 0,
+            relative_humidity: 0,
+            solar_zenith_angle: 0,
+            count: 0,
+          };
+        }
+
+        jsonData[timestamp].solar_power += row["solar_power"] ?? 0;
+        jsonData[timestamp].dhi += row["dhi"] ?? 0;
+        jsonData[timestamp].dni += row["dni"] ?? 0;
+        jsonData[timestamp].ghi += row["ghi"] ?? 0;
+        jsonData[timestamp].temperature += row["temperature"] ?? 0;
+        jsonData[timestamp].relative_humidity += row["relative_humidity"] ?? 0;
+        jsonData[timestamp].solar_zenith_angle +=
+          row["solar_zenith_angle"] ?? 0;
+        jsonData[timestamp].count += 1;
       }
     }
 
-    // Aggregate by week
-    const weeklyData = {};
-    rawData.forEach((row) => {
-      if (!weeklyData[row.week]) {
-        weeklyData[row.week] = {
-          week: row.week,
-          solar_power: 0,
-          dhi: 0,
-          dni: 0,
-          ghi: 0,
-          temperature: [],
-          relative_humidity: [],
-          solar_zenith_angle: [],
-          count: 0,
-        };
-      }
-
-      weeklyData[row.week].solar_power += row.solar_power;
-      weeklyData[row.week].dhi += row.dhi;
-      weeklyData[row.week].dni += row.dni;
-      weeklyData[row.week].ghi += row.ghi;
-
-      if (row.temperature !== null)
-        weeklyData[row.week].temperature.push(row.temperature);
-      if (row.relative_humidity !== null)
-        weeklyData[row.week].relative_humidity.push(row.relative_humidity);
-      if (row.solar_zenith_angle !== null)
-        weeklyData[row.week].solar_zenith_angle.push(row.solar_zenith_angle);
-
-      weeklyData[row.week].count++;
+    // Compute averages where necessary
+    Object.values(jsonData).forEach((week) => {
+      week.temperature /= week.count;
+      week.relative_humidity /= week.count;
+      week.solar_zenith_angle /= week.count;
+      delete week.count;
     });
 
-    // Compute averages where needed
-    const aggregatedData = Object.values(weeklyData).map((weekEntry) => {
-      return {
-        week: weekEntry.week,
-        solar_power: weekEntry.solar_power, // Sum (correct)
-        dhi: weekEntry.count > 0 ? weekEntry.dhi / weekEntry.count : 0, // Mean
-        dni: weekEntry.count > 0 ? weekEntry.dni / weekEntry.count : 0, // Mean
-        ghi: weekEntry.count > 0 ? weekEntry.ghi / weekEntry.count : 0, // Mean
-        temperature: weekEntry.temperature.length
-          ? weekEntry.temperature.reduce((a, b) => a + b, 0) /
-            weekEntry.temperature.length
-          : null, // Mean
-        relative_humidity: weekEntry.relative_humidity.length
-          ? weekEntry.relative_humidity.reduce((a, b) => a + b, 0) /
-            weekEntry.relative_humidity.length
-          : null, // Mean
-        solar_zenith_angle: weekEntry.solar_zenith_angle.length
-          ? weekEntry.solar_zenith_angle.reduce((a, b) => a + b, 0) /
-            weekEntry.solar_zenith_angle.length
-          : null, // Mean
-      };
-    });
-
-    self.postMessage({ type: "complete", data: aggregatedData });
+    self.postMessage({ type: "complete", data: Object.values(jsonData) });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }

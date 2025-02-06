@@ -147,17 +147,20 @@ const HourlySolarForecast = () => {
   };
 
   const fetchLatestFilename = async () => {
+    const dataType = "hourly"; // This could be dynamically set based on user selection
     try {
       const response = await fetch(
-        "http://127.0.0.1:8000/storage/latest-file/"
+        `http://127.0.0.1:8000/storage/latest-file/?data_type=${dataType}`
       );
       const result = await response.json();
 
       if (result.filename) {
-        localStorage.setItem("uploadedFilename", result.filename); // ✅ Store in localStorage
         setTimeout(() => {
-          navigate("/ModelOption", { state: { filename: result.filename } });
-        }, 3000); // 30-second delay
+          // Pass the filename and id directly to the ModelOption page via location.state
+          navigate("/ModelOption", {
+            state: { filename: result.filename, id: result.id },
+          });
+        }, 3000); // 3-second delay for smooth transition
       } else {
         setMessage("Error retrieving filename.");
       }

@@ -8,39 +8,16 @@ const ModelOption = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Extract id from location state or localStorage
-  const fileId = location.state?.id || localStorage.getItem("uploadedFileId");
+  // Extract id from location state
+  const fileId = location.state?.id;
 
-  // Fetch filename by id
+  // If filename is available in location state, set it to state
   useEffect(() => {
-    if (fileId) {
-      fetchFilenameById(fileId);
-    } else {
-      setLoading(false); // If no id, stop loading
+    if (location.state?.filename) {
+      setFilename(location.state.filename);
     }
-  }, [fileId]);
-
-  const fetchFilenameById = async (id) => {
-    try {
-      setLoading(true);
-      const response = await fetch(
-        `http://127.0.0.1:8000/storage/filename/${id}/`
-      );
-      const result = await response.json();
-
-      if (result.filename) {
-        setFilename(result.filename); // Set filename from the backend
-        localStorage.setItem("uploadedFilename", result.filename);
-        localStorage.setItem("uploadedFileId", id); // Store id in localStorage
-      } else {
-        setError("Error: No filename found.");
-      }
-    } catch (error) {
-      setError(`Error fetching filename: ${error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setLoading(false); // Once filename is set, stop loading
+  }, [location.state?.filename]);
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex flex-col items-center">

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import mysql.connector
 import os
@@ -85,13 +85,24 @@ async def upload_file(file: UploadFile = File(...)):
         return {"error": f"Error storing the file: {str(e)}"}
 
 @app.get("/storage/latest-file/")
-async def get_latest_file():
+async def get_latest_file(data_type: str):
     try:
+        # Determine the correct table based on the data_type query parameter
+        if data_type == "hourly":
+            table_name = "hourly_data"
+        elif data_type == "daily":
+            table_name = "daily_data"
+        elif data_type == "weekly":
+            table_name = "weekly_data"
+        else:
+            raise HTTPException(status_code=400, detail="Invalid data_type. Valid options are 'hourly', 'daily', 'weekly'.")
+
+        # Connect to the database and fetch the latest file from the specified table
         db_conn = get_db_connection()
         cursor = db_conn.cursor(dictionary=True)
 
-        # Retrieve the latest uploaded file's id and filename
-        query = "SELECT id, filename FROM hourly_data ORDER BY id DESC LIMIT 1"
+        # Query to retrieve the latest uploaded file's id and filename
+        query = f"SELECT id, filename FROM {table_name} ORDER BY id DESC LIMIT 1"
         cursor.execute(query)
         result = cursor.fetchone()
 
@@ -101,8 +112,9 @@ async def get_latest_file():
         if result:
             return {"id": result["id"], "filename": result["filename"]}
         else:
-            return {"error": "No files found in the database."}
+            return {"error": f"No files found in the {table_name} table."}
 
     except Exception as e:
-        return {"error": f"Error retrieving the file: {str(e)}"}
+        return {"error": f"Error fetching the latest file: {str(e)}"}
+
 
