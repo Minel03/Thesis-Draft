@@ -1,8 +1,16 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-import mysql.connector
+from sqlalchemy import create_engine, Column, Integer, String, MetaData, Table, desc
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from pydantic import BaseModel, Field
+from typing import Optional
 import os
 import re
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI()
 
@@ -15,40 +23,75 @@ app.add_middleware(
     allow_headers=["*"],  # Allow all headers
 )
 
-# MySQL Database Connection
-def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",      # XAMPP MySQL host
-        user="root",           # Default XAMPP user
-        password="",           # Default XAMPP password (empty)
-        database="thesis",      # Your database name
-        autocommit=True  # Auto-commit each query
-    )
+# Database connection using SQLAlchemy
+DATABASE_URL = f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}/{os.getenv('DB_NAME')}"
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
+
+# Define SQLAlchemy models
+class HourlyData(Base):
+    __tablename__ = "hourly_data"
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+
+class DailyData(Base):
+    __tablename__ = "daily_data"
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+
+class WeeklyData(Base):
+    __tablename__ = "weekly_data"
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+
+# Create tables if they don't exist
+Base.metadata.create_all(bind=engine)
+
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Pydantic models for response validation
+class FileResponse(BaseModel):
+    status: str
+    file_path: str
+
+class ErrorResponse(BaseModel):
+    error: str
+
+class LatestFileResponse(BaseModel):
+    id: int
+    filename: str
 
 # Base storage path
-BASE_STORAGE_PATH = "../../storage"
+BASE_STORAGE_PATH = os.getenv('STORAGE_PATH', "../../storage")
 os.makedirs(BASE_STORAGE_PATH, exist_ok=True)  # Ensure base storage exists
 
-@app.post("/storage/upload/")
-async def upload_file(file: UploadFile = File(...)):
+@app.post("/storage/upload/", response_model=FileResponse)
+async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         filename = file.filename
         print(f"Received file: {filename}")  # Debugging
 
-        # Determine subfolder based on filename pattern
+        # Determine subfolder and model based on filename pattern
+        data_model = None
         if re.match(r"^hourly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
             subfolder = "hourly"
-            table_name = "hourly_data"
+            data_model = HourlyData
         elif re.match(r"^daily_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
             subfolder = "daily"
-            table_name = "daily_data"
+            data_model = DailyData
         elif re.match(r"^weekly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
             subfolder = "weekly"
-            table_name = "weekly_data"
+            data_model = WeeklyData
         else:
             print(f"No match found! Assigning to 'others' folder. Filename: {filename}")
             subfolder = "others"
-            table_name = None
 
         # Ensure the correct subfolder exists
         target_folder = os.path.join(BASE_STORAGE_PATH, subfolder)
@@ -56,65 +99,48 @@ async def upload_file(file: UploadFile = File(...)):
 
         # Save the uploaded file to the storage directory
         file_location = os.path.join(target_folder, filename)
+        content = await file.read()  # Read the file content
+        
         with open(file_location, "wb") as f:
-            content = await file.read()  # Read the file content
             f.write(content)  # Write the content to the file
 
         print(f"File saved to: {file_location}")  # Debugging
 
-        # Insert filename into database if valid
-        if table_name:
-            db_conn = get_db_connection()
-            cursor = db_conn.cursor()
-
-            try:
-                query = f"INSERT INTO {table_name} (filename) VALUES (%s)"
-                cursor.execute(query, (filename,))
-                db_conn.commit()
-                print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
-            except Exception as e:
-                print(f"Database Error: {str(e)}")  # Print any DB error
-            finally:
-                cursor.close()  # ✅ Only close cursor if initialized
-                db_conn.close()
+        # Insert filename into database if valid model exists
+        if data_model:
+            db_entry = data_model(filename=filename)
+            db.add(db_entry)
+            db.commit()
+            print(f"Inserted {filename} into {data_model.__tablename__} table.")
 
         return {"status": "File uploaded successfully", "file_path": file_location}
 
     except Exception as e:
         print(f"Error storing the file: {str(e)}")  # Debugging
-        return {"error": f"Error storing the file: {str(e)}"}
+        raise HTTPException(status_code=500, detail=f"Error storing the file: {str(e)}")
 
-@app.get("/storage/latest-file/")
-async def get_latest_file(data_type: str):
+@app.get("/storage/latest-file/", response_model=LatestFileResponse)
+async def get_latest_file(data_type: str, db: Session = Depends(get_db)):
     try:
-        # Determine the correct table based on the data_type query parameter
+        # Determine the correct model based on the data_type query parameter
         if data_type == "hourly":
-            table_name = "hourly_data"
+            data_model = HourlyData
         elif data_type == "daily":
-            table_name = "daily_data"
+            data_model = DailyData
         elif data_type == "weekly":
-            table_name = "weekly_data"
+            data_model = WeeklyData
         else:
             raise HTTPException(status_code=400, detail="Invalid data_type. Valid options are 'hourly', 'daily', 'weekly'.")
 
-        # Connect to the database and fetch the latest file from the specified table
-        db_conn = get_db_connection()
-        cursor = db_conn.cursor(dictionary=True)
-
         # Query to retrieve the latest uploaded file's id and filename
-        query = f"SELECT id, filename FROM {table_name} ORDER BY id DESC LIMIT 1"
-        cursor.execute(query)
-        result = cursor.fetchone()
+        latest_file = db.query(data_model).order_by(desc(data_model.id)).first()
 
-        cursor.close()
-        db_conn.close()
-
-        if result:
-            return {"id": result["id"], "filename": result["filename"]}
+        if latest_file:
+            return {"id": latest_file.id, "filename": latest_file.filename}
         else:
-            return {"error": f"No files found in the {table_name} table."}
+            raise HTTPException(status_code=404, detail=f"No files found in the {data_model.__tablename__} table.")
 
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"error": f"Error fetching the latest file: {str(e)}"}
-
-
+        raise HTTPException(status_code=500, detail=f"Error fetching the latest file: {str(e)}")

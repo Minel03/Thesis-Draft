@@ -10,4 +10,11 @@ export default defineConfig({
       "@": "/src", // Map '@' to '/src' directory
     },
   },
+  worker: {
+    format: "es",
+    plugins: [],
+  },
+  optimizeDeps: {
+    include: ["csv-parse/browser/esm/sync"],
+  },
 });
