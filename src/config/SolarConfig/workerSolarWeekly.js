@@ -1,118 +1,133 @@
-self.onmessage = async (e) => {
-  const { file } = e.data;
+import * as Comlink from "comlink";
+import { parse } from "csv-parse/browser/esm/sync";
 
+// Define a class for validation
+class DataValidator {
+  validateWeeklyTimestamp(timestamp) {
+    return /^\d{4}-W\d{2}$/.test(timestamp); // Validate weekly timestamp format (e.g., 2022-W01)
+  }
+
+  validateRequiredFields(headers) {
+    const requiredFields = [
+      "week", // Weekly timestamp (YYYY-W##)
+      "solar_power",
+      "dhi",
+      "dni",
+      "ghi",
+      "temperature",
+      "relative_humidity",
+      "solar_zenith_angle",
+    ];
+
+    return requiredFields.every((field) => headers.includes(field));
+  }
+}
+
+// Main worker function
+const processFile = async (file) => {
   if (!file) {
     self.postMessage({ type: "error", error: "No file provided" });
     return;
   }
 
   try {
-    const reader = file.stream().getReader();
-    const decoder = new TextDecoder("utf-8");
+    // Read the CSV file as text
+    const text = await file.text();
 
-    let buffer = "";
-    let isHeaderParsed = false;
-    let headers = [];
-    let jsonData = {};
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        const cleanLine = line.trim();
-        if (!cleanLine) continue;
-
-        // Parse the headers once
-        if (!isHeaderParsed) {
-          headers = cleanLine.split(",").map((h) => h.trim());
-          isHeaderParsed = true;
-
-          // Define required columns
-          const requiredColumns = [
-            "week",
-            "solar_power",
-            "dhi",
-            "dni",
-            "ghi",
-            "temperature",
-            "relative_humidity",
-            "solar_zenith_angle",
-          ];
-
-          // Check for missing columns
-          const missingColumns = requiredColumns.filter(
-            (col) => !headers.includes(col)
-          );
-          if (missingColumns.length > 0) {
-            self.postMessage({
-              type: "error",
-              error: `Missing required columns: ${missingColumns.join(", ")}`,
-            });
-            return;
-          }
-          continue; // Move to the next line after parsing headers
-        }
-
-        // Process data rows
-        const values = cleanLine.split(",").map((v) => v.trim());
-        if (values.length !== headers.length) continue;
-
-        const row = headers.reduce((acc, header, i) => {
-          acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
-          return acc;
-        }, {});
-
-        // Validate timestamp format
-        const timestamp = row["week"];
-        if (!timestamp || !/^\d{4}-W\d{2}$/.test(timestamp)) {
-          self.postMessage({
-            type: "error",
-            error: `Invalid timestamp detected: ${timestamp}. Only weekly timestamps (YYYY-W##) are allowed.`,
-          });
-          return;
-        }
-
-        if (!jsonData[timestamp]) {
-          jsonData[timestamp] = {
-            week: timestamp,
-            solar_power: 0,
-            dhi: 0,
-            dni: 0,
-            ghi: 0,
-            temperature: 0,
-            relative_humidity: 0,
-            solar_zenith_angle: 0,
-            count: 0,
-          };
-        }
-
-        jsonData[timestamp].solar_power += row["solar_power"] ?? 0;
-        jsonData[timestamp].dhi += row["dhi"] ?? 0;
-        jsonData[timestamp].dni += row["dni"] ?? 0;
-        jsonData[timestamp].ghi += row["ghi"] ?? 0;
-        jsonData[timestamp].temperature += row["temperature"] ?? 0;
-        jsonData[timestamp].relative_humidity += row["relative_humidity"] ?? 0;
-        jsonData[timestamp].solar_zenith_angle +=
-          row["solar_zenith_angle"] ?? 0;
-        jsonData[timestamp].count += 1;
-      }
-    }
-
-    // Compute averages where necessary
-    Object.values(jsonData).forEach((week) => {
-      week.temperature /= week.count;
-      week.relative_humidity /= week.count;
-      week.solar_zenith_angle /= week.count;
-      delete week.count;
+    // Parse the CSV content
+    const records = parse(text, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
     });
 
+    if (!records.length) {
+      self.postMessage({ type: "error", error: "No data found in CSV file" });
+      return;
+    }
+
+    // Validate headers
+    const validator = new DataValidator();
+    const headers = Object.keys(records[0]);
+
+    if (!validator.validateRequiredFields(headers)) {
+      self.postMessage({
+        type: "error",
+        error: "Missing required columns in CSV",
+      });
+      return;
+    }
+
+    // Process and validate each row
+    const jsonData = {};
+
+    records.forEach((row, index) => {
+      // Validate the weekly timestamp
+      const timestamp = row.week;
+      if (!validator.validateWeeklyTimestamp(timestamp)) {
+        self.postMessage({
+          type: "error",
+          error: `Invalid timestamp on row ${
+            index + 2
+          }: ${timestamp}. Only weekly timestamps (YYYY-W##) are allowed.`,
+        });
+        return;
+      }
+
+      // Prepare the data for aggregation
+      if (!jsonData[timestamp]) {
+        jsonData[timestamp] = {
+          week: timestamp,
+          solar_power: 0,
+          dhi: 0,
+          dni: 0,
+          ghi: 0,
+          temperature: 0,
+          relative_humidity: 0,
+          solar_zenith_angle: 0,
+          count: 0, // To track the number of records for averaging
+        };
+      }
+
+      // Aggregate values for each week
+      jsonData[timestamp].solar_power += parseFloat(row.solar_power) || 0;
+      jsonData[timestamp].dhi += parseFloat(row.dhi) || 0;
+      jsonData[timestamp].dni += parseFloat(row.dni) || 0;
+      jsonData[timestamp].ghi += parseFloat(row.ghi) || 0;
+      jsonData[timestamp].temperature += parseFloat(row.temperature) || 0;
+      jsonData[timestamp].relative_humidity +=
+        parseFloat(row.relative_humidity) || 0;
+      jsonData[timestamp].solar_zenith_angle +=
+        parseFloat(row.solar_zenith_angle) || 0;
+      jsonData[timestamp].count += 1; // Increase the count for averaging
+    });
+
+    // Calculate averages for each week
+    Object.values(jsonData).forEach((weekData) => {
+      weekData.solar_power /= weekData.count;
+      weekData.dhi /= weekData.count;
+      weekData.dni /= weekData.count;
+      weekData.ghi /= weekData.count;
+      weekData.temperature /= weekData.count;
+      weekData.relative_humidity /= weekData.count;
+      weekData.solar_zenith_angle /= weekData.count;
+      delete weekData.count; // Remove the count property after calculating the averages
+    });
+
+    // Send the processed data back
     self.postMessage({ type: "complete", data: Object.values(jsonData) });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }
+};
+
+// Expose the function via Comlink
+Comlink.expose({
+  processFile,
+});
+
+// For backward compatibility with existing code
+self.onmessage = async (e) => {
+  const { file } = e.data;
+  await processFile(file);
 };
