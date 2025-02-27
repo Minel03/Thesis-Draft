@@ -131,7 +131,8 @@ const DailySolarForecast = () => {
       new URL(
         "../../../../config/SolarConfig/workerSolarDaily.js",
         import.meta.url
-      )
+      ),
+      { type: "module" } // ✅ Ensure it's treated as an ES module
     );
 
     worker.onmessage = (e) => {

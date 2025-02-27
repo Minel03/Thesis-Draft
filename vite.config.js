@@ -12,7 +12,6 @@ export default defineConfig({
   },
   worker: {
     format: "es",
-    plugins: [],
   },
   optimizeDeps: {
     include: ["csv-parse/browser/esm/sync"],

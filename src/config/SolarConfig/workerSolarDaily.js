@@ -1,106 +1,102 @@
-self.onmessage = async (e) => {
-  const { file } = e.data;
+import * as Comlink from "comlink";
+import { parse } from "csv-parse/browser/esm/sync";
 
+// Create a schema for the expected data structure
+class DataValidator {
+  validateDailyTimestamp(timestamp) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(timestamp);
+  }
+
+  validateRequiredFields(headers) {
+    const requiredFields = [
+      "date",
+      "solar_power",
+      "dhi",
+      "dni",
+      "ghi",
+      "temperature",
+      "relative_humidity",
+      "solar_zenith_angle",
+    ];
+
+    return requiredFields.every((field) => headers.includes(field));
+  }
+}
+
+// Main worker function
+const processFile = async (file) => {
   if (!file) {
     self.postMessage({ type: "error", error: "No file provided" });
     return;
   }
 
   try {
-    const reader = file.stream().getReader();
-    const decoder = new TextDecoder("utf-8");
+    // Read file as text
+    const text = await file.text();
 
-    let buffer = "";
-    let isHeaderParsed = false;
-    let headers = [];
-    let jsonData = [];
+    // Parse CSV using csv-parser
+    const records = parse(text, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
 
-    let timeIndex,
-      solarIndex,
-      dhiIndex,
-      dniIndex,
-      ghiIndex,
-      tempIndex,
-      rhIndex,
-      zenithIndex;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop(); // Keep the last incomplete line
-
-      for (const line of lines) {
-        const cleanLine = line.trim();
-        if (!cleanLine) continue;
-
-        if (!isHeaderParsed) {
-          headers = cleanLine.split(",").map((h) => h.trim());
-          isHeaderParsed = true;
-
-          // Find column indexes
-          timeIndex = headers.indexOf("date");
-          solarIndex = headers.indexOf("solar_power");
-          dhiIndex = headers.indexOf("dhi");
-          dniIndex = headers.indexOf("dni");
-          ghiIndex = headers.indexOf("ghi");
-          tempIndex = headers.indexOf("temperature");
-          rhIndex = headers.indexOf("relative_humidity");
-          zenithIndex = headers.indexOf("solar_zenith_angle");
-
-          if (
-            timeIndex === -1 ||
-            solarIndex === -1 ||
-            dhiIndex === -1 ||
-            dniIndex === -1 ||
-            ghiIndex === -1 ||
-            tempIndex === -1 ||
-            rhIndex === -1 ||
-            zenithIndex === -1
-          ) {
-            self.postMessage({
-              type: "error",
-              error: "Missing required columns in CSV.",
-            });
-            return;
-          }
-        } else {
-          const values = cleanLine.split(",").map((v) => v.trim());
-          if (values.length !== headers.length) continue;
-
-          const row = headers.reduce((acc, header, i) => {
-            acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
-            return acc;
-          }, {});
-
-          const timestamp = row["date"];
-          if (!timestamp || !/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
-            self.postMessage({
-              type: "error",
-              error: `Invalid timestamp detected: ${timestamp}. Only daily timestamps are allowed.`,
-            });
-            return;
-          }
-
-          // Convert to JSON format
-          jsonData.push({
-            date: row["date"],
-            solar_power: row["solar_power"] ?? 0,
-            dhi: row["dhi"] ?? 0,
-            dni: row["dni"] ?? 0,
-            ghi: row["ghi"] ?? 0,
-            temperature: row["temperature"] ?? 0,
-            relative_humidity: row["relative_humidity"] ?? 0,
-            solar_zenith_angle: row["solar_zenith_angle"] ?? 0,
-          });
-        }
-      }
+    if (!records.length) {
+      self.postMessage({ type: "error", error: "No data found in CSV file" });
+      return;
     }
+
+    // Validate headers
+    const validator = new DataValidator();
+    const headers = Object.keys(records[0]);
+
+    if (!validator.validateRequiredFields(headers)) {
+      self.postMessage({
+        type: "error",
+        error: "Missing required columns in CSV",
+      });
+      return;
+    }
+
+    // Process and validate each row
+    const jsonData = records
+      .map((row) => {
+        // Validate timestamp
+        if (!validator.validateDailyTimestamp(row.date)) {
+          self.postMessage({
+            type: "error",
+            error: `Invalid timestamp detected: ${row.date}. Only daily timestamps are allowed.`,
+          });
+          return null;
+        }
+
+        // Convert numeric values
+        return {
+          date: row.date,
+          solar_power: parseFloat(row.solar_power) || 0,
+          dhi: parseFloat(row.dhi) || 0,
+          dni: parseFloat(row.dni) || 0,
+          ghi: parseFloat(row.ghi) || 0,
+          temperature: parseFloat(row.temperature) || 0,
+          relative_humidity: parseFloat(row.relative_humidity) || 0,
+          solar_zenith_angle: parseFloat(row.solar_zenith_angle) || 0,
+        };
+      })
+      .filter(Boolean);
 
     self.postMessage({ type: "complete", data: jsonData });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }
+};
+
+// Expose the function via Comlink
+Comlink.expose({
+  processFile,
+});
+
+// For backward compatibility with existing code
+self.onmessage = async (e) => {
+  const { file } = e.data;
+  await processFile(file);
 };
