@@ -1,92 +1,92 @@
-self.onmessage = async (e) => {
-  const { file } = e.data;
+import * as Comlink from "comlink";
+import { parse } from "csv-parse/browser/esm/sync";
 
+// Create a schema for the expected data structure
+class DataValidator {
+  validateWeeklyTimestamp(timestamp) {
+    return /^\d{4}-W\d{2}$/.test(timestamp);
+  }
+}
+
+// Main worker function
+const processFile = async (file) => {
   if (!file) {
     self.postMessage({ type: "error", error: "No file provided" });
     return;
   }
 
   try {
-    const reader = file.stream().getReader();
-    const decoder = new TextDecoder("utf-8");
+    // Read file as text
+    const text = await file.text();
 
-    let buffer = "";
-    let isHeaderParsed = false;
-    let headers = [];
-    let jsonData = {};
+    // Parse CSV using csv-parser
+    const records = parse(text, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop();
-
-      for (const line of lines) {
-        const cleanLine = line.trim();
-        if (!cleanLine) continue;
-
-        // Parse the headers once
-        if (!isHeaderParsed) {
-          headers = cleanLine.split(",").map((h) => h.trim());
-          isHeaderParsed = true;
-
-          // Define required columns
-          const requiredColumns = ["wind_power", "wind_speed", "dew_point"];
-
-          // Check for missing columns
-          const missingColumns = requiredColumns.filter(
-            (col) => !headers.includes(col)
-          );
-          if (missingColumns.length > 0) {
-            self.postMessage({
-              type: "error",
-              error: `Missing required columns: ${missingColumns.join(", ")}`,
-            });
-            return;
-          }
-          continue; // Move to the next line after parsing headers
-        }
-
-        // Process data rows
-        const values = cleanLine.split(",").map((v) => v.trim());
-        if (values.length !== headers.length) continue;
-
-        const row = headers.reduce((acc, header, i) => {
-          acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
-          return acc;
-        }, {});
-
-        // Validate timestamp format
-        const timestamp = row["week"];
-        if (!timestamp || !/^\d{4}-W\d{2}$/.test(timestamp)) {
-          self.postMessage({
-            type: "error",
-            error: `Invalid timestamp detected: ${timestamp}. Only weekly timestamps (YYYY-W##) are allowed.`,
-          });
-          return;
-        }
-
-        if (!jsonData[timestamp]) {
-          jsonData[timestamp] = {
-            week: timestamp,
-            wind_power: 0,
-            wind_speed: 0,
-            dew_point: 0,
-            count: 0,
-          };
-        }
-
-        jsonData[timestamp].wind_power += row["wind_power"] ?? 0;
-        jsonData[timestamp].wind_speed += row["wind_speed"] ?? 0;
-        jsonData[timestamp].dew_point += row["dew_point"] ?? 0;
-        jsonData[timestamp].count += 1;
-      }
+    if (!records.length) {
+      self.postMessage({ type: "error", error: "No data found in CSV file" });
+      return;
     }
+
+    // Validate headers
+    const validator = new DataValidator();
+    const headers = Object.keys(records[0]);
+
+    if (
+      !headers.includes("week") ||
+      !headers.includes("wind_power") ||
+      !headers.includes("wind_speed") ||
+      !headers.includes("dew_point")
+    ) {
+      self.postMessage({
+        type: "error",
+        error: "Missing required columns in CSV",
+      });
+      return;
+    }
+
+    // Process and validate each row
+    const jsonData = {};
+    records.forEach((row) => {
+      // Validate timestamp
+      if (!validator.validateWeeklyTimestamp(row.week)) {
+        self.postMessage({
+          type: "error",
+          error: `Invalid timestamp detected: ${row.week}. Only weekly timestamps are allowed.`,
+        });
+        return;
+      }
+
+      if (!jsonData[row.week]) {
+        jsonData[row.week] = {
+          week: row.week,
+          wind_power: 0,
+          wind_speed: 0,
+          dew_point: 0,
+          count: 0,
+        };
+      }
+
+      jsonData[row.week].wind_power += parseFloat(row.wind_power) || 0;
+      jsonData[row.week].wind_speed += parseFloat(row.wind_speed) || 0;
+      jsonData[row.week].dew_point += parseFloat(row.dew_point) || 0;
+      jsonData[row.week].count += 1;
+    });
 
     self.postMessage({ type: "complete", data: Object.values(jsonData) });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }
+};
+
+// Expose the function via Comlink
+Comlink.expose({ processFile });
+
+// For backward compatibility with existing code
+self.onmessage = async (e) => {
+  const { file } = e.data;
+  await processFile(file);
 };

@@ -201,9 +201,16 @@ const HourlySolarForecast = () => {
         {isDragActive ? (
           <p className="text-blue-500">Drop the CSV file here...</p>
         ) : (
-          <p>Drag & drop a CSV file here, or click to select one</p>
+          <div>
+            <p className="mb-2">
+              Drag & drop a CSV file here, or click to select a file
+            </p>
+            <p className="text-sm text-gray-500">Only CSV files are accepted</p>
+            {file && (
+              <p className="mt-2 text-green-600">Selected: {file.name}</p>
+            )}
+          </div>
         )}
-        {file && <p className="mt-2 text-green-600">Selected: {file.name}</p>}
       </div>
       {message && (
         <p

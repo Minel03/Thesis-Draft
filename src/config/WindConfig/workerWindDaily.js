@@ -1,87 +1,86 @@
-self.onmessage = async (e) => {
-  const { file } = e.data;
+import * as Comlink from "comlink";
+import { parse } from "csv-parse/browser/esm/sync";
 
+// Create a schema for the expected data structure
+class DataValidator {
+  validateDailyTimestamp(timestamp) {
+    return /^\d{4}-\d{2}-\d{2}$/.test(timestamp);
+  }
+
+  validateRequiredFields(headers) {
+    const requiredFields = ["date", "wind_power", "wind_speed", "dew_point"];
+    return requiredFields.every((field) => headers.includes(field));
+  }
+}
+
+// Main worker function
+const processFile = async (file) => {
   if (!file) {
     self.postMessage({ type: "error", error: "No file provided" });
     return;
   }
 
   try {
-    const reader = file.stream().getReader();
-    const decoder = new TextDecoder("utf-8");
+    // Read file as text
+    const text = await file.text();
 
-    let buffer = "";
-    let isHeaderParsed = false;
-    let headers = [];
-    let jsonData = [];
+    // Parse CSV using csv-parser
+    const records = parse(text, {
+      columns: true,
+      skip_empty_lines: true,
+      trim: true,
+    });
 
-    let timeIndex, windPowerIndex, windSpeedIndex, dewPointIndex;
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split("\n");
-      buffer = lines.pop(); // Keep last incomplete line
-
-      for (const line of lines) {
-        const cleanLine = line.trim();
-
-        // 🚀 Skip completely empty lines
-        if (!cleanLine) continue;
-
-        if (!isHeaderParsed) {
-          headers = cleanLine.split(",").map((h) => h.trim());
-          isHeaderParsed = true;
-
-          // Find column indexes
-          timeIndex = headers.indexOf("date");
-          windPowerIndex = headers.indexOf("wind_power");
-          windSpeedIndex = headers.indexOf("wind_speed");
-          dewPointIndex = headers.indexOf("dew_point");
-
-          if (
-            timeIndex === -1 ||
-            windPowerIndex === -1 ||
-            windSpeedIndex === -1 ||
-            dewPointIndex === -1
-          ) {
-            self.postMessage({
-              type: "error",
-              error: "Missing required columns in CSV.",
-            });
-            return;
-          }
-        } else {
-          const values = cleanLine.split(",").map((v) => v.trim());
-
-          // 🚀 Skip rows with missing values
-          if (values.length !== headers.length) continue;
-
-          const row = headers.reduce((acc, header, i) => {
-            acc[header] = isNaN(values[i]) ? values[i] : parseFloat(values[i]);
-            return acc;
-          }, {});
-
-          const timestamp = row["date"];
-          if (!timestamp || !/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
-            console.warn(`Skipping invalid timestamp: ${timestamp}`);
-            continue;
-          }
-
-          jsonData.push({
-            date: row["date"],
-            wind_power: row["wind_power"] ?? 0,
-            wind_speed: row["wind_speed"] ?? 0,
-            dew_point: row["dew_point"] ?? 0,
-          });
-        }
-      }
+    if (!records.length) {
+      self.postMessage({ type: "error", error: "No data found in CSV file" });
+      return;
     }
+
+    // Validate headers
+    const validator = new DataValidator();
+    const headers = Object.keys(records[0]);
+
+    if (!validator.validateRequiredFields(headers)) {
+      self.postMessage({
+        type: "error",
+        error: "Missing required columns in CSV",
+      });
+      return;
+    }
+
+    // Process and validate each row
+    const jsonData = records
+      .map((row) => {
+        // Validate timestamp
+        if (!validator.validateDailyTimestamp(row.date)) {
+          self.postMessage({
+            type: "error",
+            error: `Invalid timestamp detected: ${row.date}. Only daily timestamps are allowed.`,
+          });
+          return null;
+        }
+
+        // Convert numeric values
+        return {
+          date: row.date,
+          wind_power: parseFloat(row.wind_power) || 0,
+          wind_speed: parseFloat(row.wind_speed) || 0,
+          dew_point: parseFloat(row.dew_point) || 0,
+        };
+      })
+      .filter(Boolean);
 
     self.postMessage({ type: "complete", data: jsonData });
   } catch (error) {
     self.postMessage({ type: "error", error: error.message });
   }
+};
+
+// Expose the function via Comlink
+Comlink.expose({ processFile });
+
+// For backward compatibility with existing code
+self.onmessage = async (e) => {
+  const { file } = e.data;
+  await processFile(file);
 };
