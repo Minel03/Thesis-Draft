@@ -50,36 +50,32 @@ const Forecast = () => {
         const timeIndex = headers.indexOf(foundTimeColumns[0]);
         const timeColumn = foundTimeColumns[0];
 
+        // Validate timestamps
         for (let i = 0; i < rows.length; i++) {
           if (!rows[i][timeIndex]) continue;
           const timestamp = rows[i][timeIndex];
 
-          if (timeColumn === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) {
+          const formats = {
+            date: {
+              regex: /^\d{4}-\d{2}-\d{2}$/,
+              example: "2024-02-05",
+            },
+            time: {
+              regex: /^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/,
+              example: "2024-02-05T14:00:00",
+            },
+            week: {
+              regex: /^\d{4}-W\d{2}$/,
+              example: "2018-W01",
+            },
+          };
+
+          const format = formats[timeColumn];
+          if (!format.regex.test(timestamp)) {
             setMessage(
-              `Timestamp on row ${
-                i + 1
-              } is not in the correct date format (e.g., 2024-02-05).`
-            );
-            resolve(false);
-            return;
-          }
-          if (
-            timeColumn === "time" &&
-            !/^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/.test(timestamp)
-          ) {
-            setMessage(
-              `Timestamp on row ${
-                i + 1
-              } is not on the hour (e.g., 2024-02-05T14:00:00).`
-            );
-            resolve(false);
-            return;
-          }
-          if (timeColumn === "week" && !/^\d{4}-W\d{2}$/.test(timestamp)) {
-            setMessage(
-              `Timestamp on row ${
-                i + 1
-              } is not in weekly format (e.g., 2018-W01).`
+              `Timestamp on row ${i + 1} is not in the correct format (e.g., ${
+                format.example
+              }).`
             );
             resolve(false);
             return;
@@ -94,7 +90,7 @@ const Forecast = () => {
           "temperature",
           "relative_humidity",
           "solar_zenith_angle",
-          "wind_speed",
+          "wind_power",
           "wind_speed",
           "dew_point",
         ];
@@ -180,20 +176,30 @@ const Forecast = () => {
   };
 
   const uploadJsonToStorage = async (jsonData) => {
-    const originalFilename = file.name.replace(/\.csv$/, ".json");
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          jsonData,
-          null,
-          2,
-          (key, value) => (typeof value === "number" ? value : value) // Preserve full precision
-        ),
-      ],
-      { type: "application/json" }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "_");
+    const originalName = file.name.replace(/\.csv$/, "");
+
+    // Get the first row of data to check which time column exists
+    const timeColumn = Object.keys(jsonData[0]).find((key) =>
+      ["time", "week", "date"].includes(key)
     );
+
+    let prefix = "";
+    if (timeColumn === "time") {
+      prefix = "hourly";
+    } else if (timeColumn === "week") {
+      prefix = "weekly";
+    } else if (timeColumn === "date") {
+      prefix = "daily";
+    }
+
+    const newFilename = `${prefix}_${originalName}_${timestamp}.json`;
+
+    const blob = new Blob([JSON.stringify(jsonData, null, 2)], {
+      type: "application/json",
+    });
     const formData = new FormData();
-    formData.append("file", blob, originalFilename);
+    formData.append("file", blob, newFilename);
 
     try {
       const response = await fetch(
@@ -206,6 +212,11 @@ const Forecast = () => {
 
       if (response.ok) {
         setMessage("File uploaded successfully!");
+        setTimeout(() => {
+          navigate("/SelectForecast", {
+            state: { filename: newFilename },
+          });
+        }, 3000);
       } else {
         const errorText = await response.text();
         setMessage(`Upload failed: ${errorText}`);

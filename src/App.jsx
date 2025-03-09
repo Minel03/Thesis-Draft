@@ -1,7 +1,7 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Navigation from "@/components/Navigation/Navigation"; // Adjust path as needed
-import { Dashboard, Models, Forecast } from "@/components/Main"; // Adjust path as needed
+import Navigation from "@/components/Navigation/Navigation";
+import { Dashboard, Models, Forecast } from "@/components/Main";
 import {
   HourlySolarForecast,
   HourlyWindForecast,
@@ -9,10 +9,12 @@ import {
   DailySolarForecast,
   WeeklyWindForecast,
   WeeklySolarForecast,
+  SolarForecastOptions,
+  WindForecastOptions,
+  ModelOption,
+  SelectForecast,
+  GenerateForecast,
 } from "./components/Main";
-import { SolarForecastOptions } from "./components/Main";
-import { WindForecastOptions } from "./components/Main";
-import { ModelOption } from "./components/Main";
 
 const App = () => {
   return (
@@ -34,7 +36,8 @@ const App = () => {
         <Route path="/WeeklyWindForecast" element={<WeeklyWindForecast />} />
         <Route path="/WeeklySolarForecast" element={<WeeklySolarForecast />} />
         <Route path="/ModelOption" element={<ModelOption />} />
-        {/* Add other routes here */}
+        <Route path="/SelectForecast" element={<SelectForecast />} />
+        <Route path="/GenerateForecast" element={<GenerateForecast />} />
       </Routes>
     </Router>
   );
