@@ -119,6 +119,35 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
         print(f"Error storing the file: {str(e)}")  # Debugging
         raise HTTPException(status_code=500, detail=f"Error storing the file: {str(e)}")
 
+@app.post("/storage/upload_csv/")
+async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    try:
+        filename = file.filename
+        print(f"Received file: {filename}")  # Debugging
+
+        # Fixed target folder: storage/json
+        target_folder = os.path.join(BASE_STORAGE_PATH, "json")
+        os.makedirs(target_folder, exist_ok=True)
+
+        # Save the uploaded file to the storage/json directory
+        file_location = os.path.join(target_folder, filename)
+        content = await file.read()  # Read the file content
+        
+        with open(file_location, "wb") as f:
+            f.write(content)  # Write the content to the file
+
+        print(f"File saved to: {file_location}")  # Debugging
+
+        # No database model selection since we're not categorizing
+        # Optionally, you could still log the filename in a generic table if needed
+        # For now, skipping database insertion unless you specify a table
+
+        return {"status": "File uploaded successfully", "file_path": file_location}
+
+    except Exception as e:
+        print(f"Error storing the file: {str(e)}")  # Debugging
+        raise HTTPException(status_code=500, detail=f"Error storing the file: {str(e)}")
+
 @app.get("/storage/latest-file/", response_model=LatestFileResponse)
 async def get_latest_file(data_type: str, db: Session = Depends(get_db)):
     try:
