@@ -25,35 +25,82 @@ const GenerateForecast = () => {
     return "Hourly";
   };
 
+  // Get step options based on granularity
+  const getStepOptions = (granularity) => {
+    switch (granularity) {
+      case "Hourly":
+        return [
+          { value: "1", label: "1 Step (1-Hour Horizon)" },
+          { value: "24", label: "24 Steps (1-Day Horizon)" },
+          { value: "168", label: "168 Steps (1-Week Horizon)" },
+        ];
+      case "Daily":
+        return [
+          { value: "1", label: "1 (1-Day Horizon)" },
+          { value: "7", label: "7 Steps (1-Week Horizon)" },
+          { value: "30", label: "30 Steps (1-Month Horizon)" },
+        ];
+      case "Weekly":
+        return [
+          { value: "1", label: "1 Step (1-Week Horizon)" },
+          { value: "4", label: "4 Steps (1-Month Horizon)" },
+          { value: "52", label: "52 Steps (1-Year Horizon)" },
+        ];
+      default:
+        return null;
+    }
+  };
+
+  const initialGranularity = getGranularityFromFilename();
+  const initialStepOptions = getStepOptions(initialGranularity);
+
   const [formData, setFormData] = useState({
-    filename: location.state?.filename || null,
-    granularity: getGranularityFromFilename(location.state?.filename),
-    steps: "24 (1-day Horizon)",
-    modelType: "Single",
-    singleModel: "DHR",
-    hybridModel: "DHR-ESN",
+    filename: null,
+    granularity: initialGranularity,
+    steps: initialStepOptions ? initialStepOptions[0].value : "1",
+    modelType: "",
+    singleModel: "",
+    hybridModel: "",
   });
+
+  // Update steps when granularity changes
+  useEffect(() => {
+    const stepOptions = getStepOptions(formData.granularity);
+    setFormData((prev) => ({
+      ...prev,
+      steps: stepOptions[0].value,
+    }));
+  }, [formData.granularity]);
 
   useEffect(() => {
     const fetchFileData = async () => {
       try {
         setLoading(true);
-        const filename = location.state?.filename;
 
-        if (!filename) {
-          throw new Error("No filename provided");
+        // Get the data type from the URL or default to hourly
+        const urlParams = new URLSearchParams(location.search);
+        const dataType = urlParams.get("type") || "hourly";
+
+        // Fetch the latest file of the specific type
+        const response = await fetch(
+          `http://localhost:8000/storage/latest-file/?data_type=${dataType}`
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch ${dataType} file`);
         }
 
-        // Use the exact filename from location.state
+        const latestFile = await response.json();
+
         setFileData({
-          filename: filename,
-          upload_date: new Date().toISOString(), // Since we don't have the actual upload date
+          filename: latestFile.filename,
+          upload_date: latestFile.upload_date,
         });
 
         setFormData((prev) => ({
           ...prev,
-          filename: filename,
-          granularity: getGranularityFromFilename(filename),
+          filename: latestFile.filename,
+          granularity: getGranularityFromFilename(latestFile.filename),
         }));
       } catch (err) {
         console.error("Error:", err);
@@ -64,11 +111,28 @@ const GenerateForecast = () => {
     };
 
     fetchFileData();
-  }, [location.state?.filename]);
+  }, [location.search]);
+
+  // Validate form before submission
+  const isFormValid = () => {
+    if (!fileData) return false;
+    if (!formData.modelType) return false;
+    if (formData.modelType === "Single" && !formData.singleModel) return false;
+    if (formData.modelType === "Hybrid" && !formData.hybridModel) return false;
+    return true;
+  };
 
   const handleChange = (e) => {
     const { name, value } = e.target;
-    setFormData({ ...formData, [name]: value });
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+      // Reset model selections when model type changes
+      ...(name === "modelType" && {
+        singleModel: value === "Single" ? "" : prev.singleModel,
+        hybridModel: value === "Hybrid" ? "" : prev.hybridModel,
+      }),
+    }));
   };
 
   const handleGenerate = async (e) => {
@@ -153,9 +217,11 @@ const GenerateForecast = () => {
             value={formData.steps}
             onChange={handleChange}
             className="block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="24 (1-day Horizon)">24 (1-day Horizon)</option>
-            <option value="48 (2-day Horizon)">48 (2-day Horizon)</option>
-            <option value="72 (3-day Horizon)">72 (3-day Horizon)</option>
+            {getStepOptions(formData.granularity).map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
         </div>
 
@@ -188,6 +254,11 @@ const GenerateForecast = () => {
               Hybrid
             </label>
           </div>
+          {!formData.modelType && (
+            <p className="text-sm text-red-500 mt-1">
+              Please select a model type
+            </p>
+          )}
         </div>
 
         {/* Single Model Options */}
@@ -201,9 +272,13 @@ const GenerateForecast = () => {
               value={formData.singleModel}
               onChange={handleChange}
               className="block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Select a model</option>
               <option value="DHR">DHR</option>
               <option value="ESN">ESN</option>
             </select>
+            {formData.modelType === "Single" && !formData.singleModel && (
+              <p className="text-sm text-red-500 mt-1">Please select a model</p>
+            )}
           </div>
         )}
 
@@ -218,9 +293,13 @@ const GenerateForecast = () => {
               value={formData.hybridModel}
               onChange={handleChange}
               className="block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Select a model</option>
               <option value="DHR-ESN">DHR-ESN</option>
               <option value="SARIMA-LSTM">SARIMA-LSTM</option>
             </select>
+            {formData.modelType === "Hybrid" && !formData.hybridModel && (
+              <p className="text-sm text-red-500 mt-1">Please select a model</p>
+            )}
           </div>
         )}
 
@@ -234,7 +313,7 @@ const GenerateForecast = () => {
           </button>
           <button
             type="submit"
-            disabled={!fileData}
+            disabled={!isFormValid()}
             className="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
             Submit
           </button>

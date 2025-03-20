@@ -59,9 +59,8 @@ const SelectForecast = () => {
       );
 
       // Navigate to format generation
-      navigate("/GenerateForecast", {
-        state: { filename: newFilename, modelType: modelType.toLowerCase() },
-      });
+      const dataType = folderPrefix; // This will be 'hourly', 'daily', or 'weekly'
+      navigate(`/GenerateForecast?type=${dataType}`);
     } catch (err) {
       console.error("Error details:", err);
       setError(`Error processing data: ${err.message}`);
