@@ -154,16 +154,6 @@ const SelectForecast = () => {
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex flex-col items-center">
-      <div className="mb-4 text-center">
-        <p className="font-semibold">
-          Selected File: {loading ? "Loading..." : fileData.filename}
-        </p>
-        {fileData.upload_date && (
-          <p className="text-sm text-gray-600">
-            Uploaded: {fileData.upload_date}
-          </p>
-        )}
-      </div>
       {error && <p className="text-red-500 mb-4">{error}</p>}
       <h1 className="text-2xl font-bold mb-6">Dataset Selection</h1>
       <div className="flex gap-4">

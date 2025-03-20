@@ -173,9 +173,7 @@ const GenerateForecast = () => {
       <form
         onSubmit={handleGenerate}
         className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">
-          Generate Forecast
-        </h1>
+        <h1 className="text-2xl font-bold mb-6 text-center">Generate</h1>
 
         {/* File Information */}
         <div className="mb-4">
