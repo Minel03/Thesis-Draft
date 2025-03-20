@@ -257,3 +257,35 @@ async def get_latest_file(data_type: str, db: Session = Depends(get_db)):
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/storage/get-latest-by-pattern/{filename}", response_model=LatestFileResponse)
+async def get_latest_by_pattern(filename: str, db: Session = Depends(get_db)):
+    try:
+        # Determine data type from filename
+        data_type = None
+        if "weekly" in filename:
+            data_type = "weekly"
+        elif "daily" in filename:
+            data_type = "daily"
+        elif "hourly" in filename:
+            data_type = "hourly"
+        
+        if not data_type:
+            raise HTTPException(status_code=400, detail="Invalid filename pattern")
+            
+        data_model = DATA_MODELS.get(data_type)
+        latest_file = db.query(data_model).order_by(desc(data_model.id)).first()
+        
+        if not latest_file:
+            raise HTTPException(status_code=404, detail=f"No files found in the {data_model.__tablename__} table.")
+
+        return {
+            "id": latest_file.id, 
+            "filename": latest_file.filename,
+            "upload_date": latest_file.upload_date
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
