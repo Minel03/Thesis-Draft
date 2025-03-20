@@ -173,7 +173,7 @@ const GenerateForecast = () => {
       <form
         onSubmit={handleGenerate}
         className="bg-white p-6 rounded-lg shadow-md w-full max-w-md">
-        <h1 className="text-2xl font-bold mb-6 text-center">Generate</h1>
+        <h1 className="text-2xl font-bold mb-6">Generate</h1>
 
         {/* File Information */}
         <div className="mb-4">
@@ -293,7 +293,6 @@ const GenerateForecast = () => {
               className="block w-full p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
               <option value="">Select a model</option>
               <option value="DHR-ESN">DHR-ESN</option>
-              <option value="SARIMA-LSTM">SARIMA-LSTM</option>
             </select>
             {formData.modelType === "Hybrid" && !formData.hybridModel && (
               <p className="text-sm text-red-500 mt-1">Please select a model</p>
