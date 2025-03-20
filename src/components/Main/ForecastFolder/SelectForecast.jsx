@@ -1,132 +1,62 @@
 import React, { useEffect, useState } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 const SelectForecast = () => {
-  const location = useLocation();
   const navigate = useNavigate();
-  const [filename, setFilename] = useState("No file selected");
+  const [fileData, setFileData] = useState({
+    filename: "No file selected",
+    upload_date: null,
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (location.state?.filename) {
-      setFilename(location.state.filename);
-    }
-    setLoading(false);
-  }, [location.state?.filename]);
+    const fetchLatestFile = async () => {
+      try {
+        const response = await fetch(
+          "http://localhost:8000/storage/latest-file/?data_type=json"
+        );
+        if (!response.ok) {
+          throw new Error("Failed to fetch latest file");
+        }
+        const data = await response.json();
+        setFileData({
+          filename: data.filename,
+          upload_date: new Date(data.upload_date).toLocaleString(),
+        });
+      } catch (err) {
+        console.error("Error fetching latest file:", err);
+        setError("Error fetching latest file");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchLatestFile();
+  }, []);
 
   const handleModelSelect = async (modelType) => {
     try {
       setLoading(true);
-      console.log("Fetching file:", filename);
       const response = await fetch(
-        `http://localhost:8000/storage/read/${filename}`
+        `http://localhost:8000/storage/read/${fileData.filename}`
       );
       if (!response.ok) {
-        const errorText = await response.text();
-        console.error(
-          "Fetch failed with status:",
-          response.status,
-          "Response:",
-          errorText
-        );
-        throw new Error(`Failed to read file: ${errorText}`);
+        throw new Error(await response.text());
       }
       const data = await response.json();
-      console.log("Fetched data:", data);
 
       if (!Array.isArray(data) || data.length === 0) {
         throw new Error("Data is empty or not an array");
       }
 
-      // Define regex patterns for time-related fields
-      const timePatterns = {
-        date: /^\d{4}-\d{2}-\d{2}$/,
-        time: /^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/,
-        week: /^\d{4}-W\d{2}$/,
-      };
-
-      // Define required fields for each model type
-      const requiredFields = {
-        Solar: [
-          "solar_power",
-          "dhi",
-          "dni",
-          "ghi",
-          "temperature",
-          "relative_humidity",
-          "solar_zenith_angle",
-        ],
-        Wind: ["wind_power", "wind_speed", "dew_point"],
-      };
-
-      // Determine which time-related field to use based on the first row
-      const firstRow = data[0];
-      let selectedTimeField = null;
-      let folderPrefix = null;
-      for (const [field, regex] of Object.entries(timePatterns)) {
-        if (firstRow[field] && regex.test(firstRow[field])) {
-          selectedTimeField = field;
-          folderPrefix =
-            field === "time" ? "hourly" : field === "date" ? "daily" : "weekly";
-          console.log(
-            `Selected time field: ${field} (e.g., ${firstRow[field]}), folder: ${folderPrefix}`
-          );
-          break;
-        }
-      }
-      if (!selectedTimeField) {
-        throw new Error(
-          "No valid time-related field (time, date, week) found in data"
-        );
-      }
-
-      // Filter data to include only the selected time field and model-specific fields
-      const filteredData = data.map((row) => {
-        const newRow = { [selectedTimeField]: row[selectedTimeField] };
-        requiredFields[modelType].forEach((field) => {
-          if (row[field] !== undefined) {
-            newRow[field] = row[field];
-          }
-        });
-        return newRow;
-      });
-      console.log("Filtered data:", filteredData);
-
-      // Validate filtered data
-      if (filteredData.every((row) => Object.keys(row).length <= 1)) {
-        throw new Error("Filtered data lacks required fields");
-      }
-
-      // Create new filename with folder prefix and timestamp
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "_");
-      const newFilename = `${folderPrefix}_${modelType.toLowerCase()}_data_${timestamp}.json`;
-      console.log("New filename:", newFilename);
-
-      // Create and upload new JSON file
-      const formData = new FormData();
-      formData.append(
-        "file",
-        new Blob([JSON.stringify(filteredData, null, 2)], {
-          type: "application/json",
-        }),
-        newFilename
+      // Process data and create new file
+      const { filteredData, folderPrefix } = processData(data, modelType);
+      const newFilename = await uploadProcessedData(
+        filteredData,
+        folderPrefix,
+        modelType
       );
-
-      const uploadResponse = await fetch(
-        "http://localhost:8000/storage/process_model_data/",
-        {
-          method: "POST",
-          body: formData,
-        }
-      );
-      if (!uploadResponse.ok) {
-        const uploadErrorText = await uploadResponse.text();
-        console.error("Upload failed:", uploadErrorText);
-        throw new Error(`Failed to upload filtered data: ${uploadErrorText}`);
-      }
-      const uploadResult = await uploadResponse.json();
-      console.log("Upload result:", uploadResult);
 
       // Navigate to format generation
       navigate("/GenerateForecast", {
@@ -140,24 +70,119 @@ const SelectForecast = () => {
     }
   };
 
-  const modelButtons = [
-    { name: "Solar", path: "/SolarForecastOptions", color: "blue" },
-    { name: "Wind", path: "/WindForecastOptions", color: "green" },
-  ];
+  const processData = (data, modelType) => {
+    const timePatterns = {
+      date: /^\d{4}-\d{2}-\d{2}$/,
+      time: /^\d{4}-\d{2}-\d{2}T\d{2}:00:00$/,
+      week: /^\d{4}-W\d{2}$/,
+    };
+
+    const requiredFields = {
+      Solar: [
+        "solar_power",
+        "dhi",
+        "dni",
+        "ghi",
+        "temperature",
+        "relative_humidity",
+        "solar_zenith_angle",
+      ],
+      Wind: ["wind_power", "wind_speed", "dew_point"],
+    };
+
+    // Determine time field and folder prefix
+    const firstRow = data[0];
+    let selectedTimeField = null;
+    let folderPrefix = null;
+
+    for (const [field, regex] of Object.entries(timePatterns)) {
+      if (firstRow[field] && regex.test(firstRow[field])) {
+        selectedTimeField = field;
+        folderPrefix =
+          field === "time" ? "hourly" : field === "date" ? "daily" : "weekly";
+        break;
+      }
+    }
+
+    if (!selectedTimeField) {
+      throw new Error("No valid time-related field found in data");
+    }
+
+    // Filter data
+    const filteredData = data.map((row) => ({
+      [selectedTimeField]: row[selectedTimeField],
+      ...Object.fromEntries(
+        requiredFields[modelType]
+          .filter((field) => row[field] !== undefined)
+          .map((field) => [field, row[field]])
+      ),
+    }));
+
+    if (filteredData.every((row) => Object.keys(row).length <= 1)) {
+      throw new Error("Filtered data lacks required fields");
+    }
+
+    return { filteredData, folderPrefix };
+  };
+
+  const uploadProcessedData = async (filteredData, folderPrefix, modelType) => {
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "_");
+    const newFilename = `${folderPrefix}_${modelType.toLowerCase()}_data_${timestamp}.json`;
+
+    const formData = new FormData();
+    formData.append(
+      "file",
+      new Blob([JSON.stringify(filteredData, null, 2)], {
+        type: "application/json",
+      }),
+      newFilename
+    );
+
+    const response = await fetch(
+      "http://localhost:8000/storage/process_model_data/",
+      {
+        method: "POST",
+        body: formData,
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    return newFilename;
+  };
 
   return (
     <div className="p-6 bg-gray-100 min-h-screen flex flex-col items-center">
-      <p>Selected File: {loading ? "Loading..." : filename}</p>
-      {error && <p className="text-red-500">{error}</p>}
-      <h1 className="text-2xl font-bold mb-6">Model Options</h1>
-      {modelButtons.map((button, index) => (
-        <button
-          key={index}
-          onClick={() => handleModelSelect(button.name)}
-          className={`mb-4 p-4 bg-${button.color}-500 text-white rounded-md hover:bg-${button.color}-600`}>
-          {button.name}
-        </button>
-      ))}
+      <div className="mb-4 text-center">
+        <p className="font-semibold">
+          Selected File: {loading ? "Loading..." : fileData.filename}
+        </p>
+        {fileData.upload_date && (
+          <p className="text-sm text-gray-600">
+            Uploaded: {fileData.upload_date}
+          </p>
+        )}
+      </div>
+      {error && <p className="text-red-500 mb-4">{error}</p>}
+      <h1 className="text-2xl font-bold mb-6">Dataset Selection</h1>
+      <div className="flex gap-4">
+        {[
+          { name: "Solar", color: "blue" },
+          { name: "Wind", color: "green" },
+        ].map((button, index) => (
+          <button
+            key={index}
+            onClick={() => handleModelSelect(button.name)}
+            disabled={loading}
+            className={`px-6 py-3 bg-${button.color}-500 text-white rounded-md 
+              hover:bg-${button.color}-600 transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed`}>
+            {button.name}
+          </button>
+        ))}
+      </div>
     </div>
   );
 };

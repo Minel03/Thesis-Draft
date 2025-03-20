@@ -213,9 +213,7 @@ const Forecast = () => {
       if (response.ok) {
         setMessage("File uploaded successfully!");
         setTimeout(() => {
-          navigate("/SelectForecast", {
-            state: { filename: newFilename },
-          });
+          navigate("/SelectForecast");
         }, 3000);
       } else {
         const errorText = await response.text();

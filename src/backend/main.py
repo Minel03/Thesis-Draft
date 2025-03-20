@@ -1,9 +1,10 @@
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy import create_engine, Column, Integer, String, desc
+from sqlalchemy import create_engine, Column, Integer, String, desc, DateTime
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from pydantic import BaseModel
+from datetime import datetime
 import os
 import re
 import json
@@ -39,6 +40,10 @@ class BaseDataModel(Base):
     __abstract__ = True
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=datetime.now)
+
+class JsonData(BaseDataModel):
+    __tablename__ = "json_data"
 
 class HourlyData(BaseDataModel):
     __tablename__ = "hourly_data"
@@ -76,7 +81,8 @@ FOLDERS = ["hourly", "daily", "weekly", "others", "json"]
 DATA_MODELS = {
     "hourly": HourlyData,
     "daily": DailyData,
-    "weekly": WeeklyData
+    "weekly": WeeklyData,
+    "json": JsonData
 }
 
 def get_file_path(filename: str) -> str:
@@ -115,30 +121,50 @@ async def read_json_file(filename: str):
         raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
 
 @app.post("/storage/process_model_data/")
-async def process_model_data(file: UploadFile = File(...)):
+async def process_model_data(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         filename = file.filename
         logger.info(f"Processing file: {filename}")
+        
+        # Determine subfolder and data model
         if "hourly" in filename:
             subfolder = "hourly"
+            data_model = HourlyData
             logger.info("Matched subfolder: hourly")
         elif "daily" in filename:
             subfolder = "daily"
+            data_model = DailyData
             logger.info("Matched subfolder: daily")
         elif "weekly" in filename:
             subfolder = "weekly"
+            data_model = WeeklyData
             logger.info("Matched subfolder: weekly")
         else:
             logger.error(f"Invalid filename format: {filename}")
             raise HTTPException(status_code=400, detail="Invalid filename format")
         
+        # Save file to storage
         target_folder = os.path.join(BASE_STORAGE_PATH, subfolder)
         os.makedirs(target_folder, exist_ok=True)
         file_path = os.path.join(target_folder, filename)
+        content = await file.read()
         with open(file_path, "wb") as f:
-            f.write(await file.read())
-        logger.info(f"File saved to: {file_path}")
-        return {"status": "File processed", "file_path": file_path}
+            f.write(content)
+
+        # Save to database
+        db_entry = data_model(filename=filename)
+        db.add(db_entry)
+        db.commit()
+        db.refresh(db_entry)
+
+        logger.info(f"File saved to: {file_path} and database table: {data_model.__tablename__}")
+        return {
+            "status": "File processed", 
+            "file_path": file_path,
+            "filename": filename,
+            "table": data_model.__tablename__,
+            "upload_date": db_entry.upload_date
+        }
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -183,17 +209,33 @@ async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.post("/storage/upload_csv/", response_model=FileResponse)
-async def upload_csv(file: UploadFile = File(...)):
+# Add this new model
+class UploadResponse(BaseModel):
+    status: str
+    file_path: str
+    filename: str
+
+# Modify the upload_csv endpoint
+@app.post("/storage/upload_csv/", response_model=UploadResponse)
+async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
-        file_location = os.path.join(BASE_STORAGE_PATH, "json", file.filename)
+        filename = file.filename
+        file_location = os.path.join(BASE_STORAGE_PATH, "json", filename)
         os.makedirs(os.path.dirname(file_location), exist_ok=True)
         
         content = await file.read()
         with open(file_location, "wb") as f:
             f.write(content)
 
-        return {"status": "File uploaded successfully", "file_path": file_location}
+        db_entry = JsonData(filename=filename)
+        db.add(db_entry)
+        db.commit()
+
+        return {
+            "status": "File uploaded successfully", 
+            "file_path": file_location,
+            "filename": filename
+        }
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
