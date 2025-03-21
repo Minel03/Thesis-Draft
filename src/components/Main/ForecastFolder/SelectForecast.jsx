@@ -125,8 +125,36 @@ const SelectForecast = () => {
   };
 
   const uploadProcessedData = async (filteredData, folderPrefix, modelType) => {
+    // Determine the table type based on folderPrefix
+    let tableType = folderPrefix; // Since folderPrefix already contains 'hourly', 'daily', or 'weekly'
+
+    // Get the latest ID from the appropriate table
+    const latestFileResponse = await fetch(
+      `http://localhost:8000/storage/latest-file/?data_type=${tableType}`
+    );
+
+    let nextId = 1; // Default to 1 if no files exist
+
+    if (latestFileResponse.ok) {
+      const latestFile = await latestFileResponse.json();
+      // Make sure we're getting a valid ID
+      if (latestFile && typeof latestFile.id === "number") {
+        nextId = latestFile.id + 1; // Increment by 1 to get next available ID
+      } else {
+        console.warn(
+          `No valid ID found in response from ${tableType}:`,
+          latestFile
+        );
+      }
+    } else {
+      console.warn(
+        `Failed to fetch latest file from ${tableType}:`,
+        await latestFileResponse.text()
+      );
+    }
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, "_");
-    const newFilename = `${folderPrefix}_${modelType.toLowerCase()}_data_${timestamp}.json`;
+    const newFilename = `${nextId}_${folderPrefix}_${modelType.toLowerCase()}_data.json`;
 
     const formData = new FormData();
     formData.append(

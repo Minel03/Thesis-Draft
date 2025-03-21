@@ -15,16 +15,16 @@ const Navigation = () => {
         </li>
         <li>
           <Link
-            to="/model"
+            to="/forecast"
             className="block py-2 px-4 hover:bg-gray-700 rounded">
-            Models
+            Forecast
           </Link>
         </li>
         <li>
           <Link
-            to="/forecast"
+            to="/history"
             className="block py-2 px-4 hover:bg-gray-700 rounded">
-            Forecast
+            History
           </Link>
         </li>
         {/* Add other links as needed */}

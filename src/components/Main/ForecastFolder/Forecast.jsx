@@ -176,7 +176,6 @@ const Forecast = () => {
   };
 
   const uploadJsonToStorage = async (jsonData) => {
-    const timestamp = new Date().toISOString().replace(/[:.]/g, "_");
     const originalName = file.name.replace(/\.csv$/, "");
 
     // Get the first row of data to check which time column exists
@@ -193,15 +192,38 @@ const Forecast = () => {
       prefix = "daily";
     }
 
-    const newFilename = `${prefix}_${originalName}_${timestamp}.json`;
-
-    const blob = new Blob([JSON.stringify(jsonData, null, 2)], {
-      type: "application/json",
-    });
-    const formData = new FormData();
-    formData.append("file", blob, newFilename);
-
     try {
+      // Get the latest ID from json_data table
+      const latestFileResponse = await fetch(
+        `http://localhost:8000/storage/latest-file/?data_type=json`
+      );
+
+      let nextId = 1; // Default to 1 if no files exist
+
+      if (latestFileResponse.ok) {
+        const latestFile = await latestFileResponse.json();
+
+        // Make sure we're getting a valid ID
+        if (latestFile && typeof latestFile.id === "number") {
+          nextId = latestFile.id + 1; // Increment by 1 to get next available ID
+        } else {
+          console.warn("No valid ID found in response:", latestFile);
+        }
+      } else {
+        console.warn(
+          "Failed to fetch latest file:",
+          await latestFileResponse.text()
+        );
+      }
+
+      const newFilename = `${nextId}_${prefix}_${originalName}.json`;
+
+      const blob = new Blob([JSON.stringify(jsonData, null, 2)], {
+        type: "application/json",
+      });
+      const formData = new FormData();
+      formData.append("file", blob, newFilename);
+
       const response = await fetch(
         "http://localhost:8000/storage/upload_csv/",
         {
@@ -211,16 +233,19 @@ const Forecast = () => {
       );
 
       if (response.ok) {
+        const uploadResult = await response.json();
         setMessage("File uploaded successfully!");
         setTimeout(() => {
           navigate("/SelectForecast");
-        }, 3000);
+        }, 2000);
       } else {
         const errorText = await response.text();
+        console.error("Upload failed:", errorText);
         setMessage(`Upload failed: ${errorText}`);
         setIsUploadDisabled(false);
       }
     } catch (error) {
+      console.error("Upload error:", error);
       setMessage(`Upload error: ${error.message}`);
       setIsUploadDisabled(false);
     }
