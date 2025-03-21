@@ -1,63 +1,29 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-import Sidebar from "@/components/Sidebar/Sidebar"; // Adjust path as needed
-import { Dashboard, Models, Forecast } from "@/components/Main"; // Adjust path as needed
+import Navigation from "@/components/Navigation/Navigation";
+import { Dashboard, Forecast, History } from "@/components/Main";
 import {
-  HourlySolarForecast,
-  HourlyWindForecast,
-  DailyWindForecast,
-  DailySolarForecast,
-  WeeklyWindForecast,
-  WeeklySolarForecast,
+  ModelOption,
+  SelectForecast,
+  GenerateForecast,
+  ForecastResult,
 } from "./components/Main";
-import { SolarForecastOptions } from "./components/Main";
-import { WindForecastOptions } from "./components/Main";
-import { ModelOption } from "./components/Main";
 
 const App = () => {
   return (
     <Router>
-      <div className="flex">
-        <Sidebar /> {/* This is where you display the sidebar */}
-        <div className="flex-grow">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/Model" element={<Models />} />
-            <Route path="/Forecast" element={<Forecast />} />
-            <Route
-              path="/SolarForecastOptions"
-              element={<SolarForecastOptions />}
-            />
-            <Route
-              path="/WindForecastOptions"
-              element={<WindForecastOptions />}
-            />
-            <Route
-              path="/HourlySolarForecast"
-              element={<HourlySolarForecast />}
-            />
-            <Route
-              path="/HourlyWindForecast"
-              element={<HourlyWindForecast />}
-            />
-            <Route path="/DailyWindForecast" element={<DailyWindForecast />} />
-            <Route
-              path="/DailySolarForecast"
-              element={<DailySolarForecast />}
-            />
-            <Route
-              path="/WeeklyWindForecast"
-              element={<WeeklyWindForecast />}
-            />
-            <Route
-              path="/WeeklySolarForecast"
-              element={<WeeklySolarForecast />}
-            />
-            <Route path="/ModelOption" element={<ModelOption />} />
-            {/* Add other routes here */}
-          </Routes>
-        </div>
-      </div>
+      <Navigation />
+      <Routes>
+        {/* Main routes */}
+        <Route path="/" element={<Dashboard />} />
+        <Route path="/forecast" element={<Forecast />} />
+        <Route path="/history" element={<History />} />
+        <Route path="/ForecastResult" element={<ForecastResult />} />
+        {/* Forecast and model configuration routes */}
+        <Route path="/ModelOption" element={<ModelOption />} />
+        <Route path="/SelectForecast" element={<SelectForecast />} />
+        <Route path="/GenerateForecast" element={<GenerateForecast />} />
+      </Routes>
     </Router>
   );
 };

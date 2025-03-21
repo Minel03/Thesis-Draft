@@ -1,106 +1,291 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
-import mysql.connector
+from sqlalchemy import create_engine, Column, Integer, String, desc, DateTime
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from pydantic import BaseModel
+from datetime import datetime
 import os
 import re
+import json
+import pandas as pd
+import logging
+from dotenv import load_dotenv
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
 
 app = FastAPI()
 
 # Enable CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow requests from any frontend
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all HTTP methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
-# MySQL Database Connection
-def get_db_connection():
-    return mysql.connector.connect(
-        host="localhost",      # XAMPP MySQL host
-        user="root",           # Default XAMPP user
-        password="",           # Default XAMPP password (empty)
-        database="thesis",      # Your database name
-        autocommit=True  # Auto-commit each query
-    )
+# Database connection
+DATABASE_URL = f"mysql+mysqlconnector://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}/{os.getenv('DB_NAME')}"
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+Base = declarative_base()
 
-# Base storage path
-BASE_STORAGE_PATH = "../../storage"
-os.makedirs(BASE_STORAGE_PATH, exist_ok=True)  # Ensure base storage exists
+# SQLAlchemy models
+class BaseDataModel(Base):
+    __abstract__ = True
+    id = Column(Integer, primary_key=True, index=True)
+    filename = Column(String(255), nullable=False)
+    upload_date = Column(DateTime, default=datetime.now)
 
-@app.post("/storage/upload/")
-async def upload_file(file: UploadFile = File(...)):
+class JsonData(BaseDataModel):
+    __tablename__ = "json_data"
+
+class HourlyData(BaseDataModel):
+    __tablename__ = "hourly_data"
+
+class DailyData(BaseDataModel):
+    __tablename__ = "daily_data"
+
+class WeeklyData(BaseDataModel):
+    __tablename__ = "weekly_data"
+
+Base.metadata.create_all(bind=engine)
+
+# Database session dependency
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Response models
+class FileResponse(BaseModel):
+    status: str
+    file_path: str
+
+class LatestFileResponse(BaseModel):
+    id: int
+    filename: str
+
+# Storage configuration
+BASE_STORAGE_PATH = os.getenv('STORAGE_PATH', "../../storage")
+os.makedirs(BASE_STORAGE_PATH, exist_ok=True)
+
+FOLDERS = ["hourly", "daily", "weekly", "others", "json"]
+DATA_MODELS = {
+    "hourly": HourlyData,
+    "daily": DailyData,
+    "weekly": WeeklyData,
+    "json": JsonData
+}
+
+def get_file_path(filename: str) -> str:
+    for folder in FOLDERS:
+        file_path = os.path.join(BASE_STORAGE_PATH, folder, filename)
+        if os.path.exists(file_path):
+            return file_path
+    return None
+
+@app.get("/storage/read/{filename}")
+async def read_json_file(filename: str):
+    try:
+        logger.info(f"Reading file: {filename}")
+        folders = ['hourly', 'daily', 'weekly', 'json', 'others']
+        file_path = None
+        for folder in folders:
+            temp_path = os.path.join(BASE_STORAGE_PATH, folder, filename)
+            if os.path.exists(temp_path):
+                file_path = temp_path
+                break
+        if not file_path:
+            logger.error(f"File not found: {filename}")
+            raise HTTPException(status_code=404, detail="File not found")
+
+        with open(file_path, 'r') as f:
+            content = f.read()
+            logger.info(f"Raw content: {content[:100]}...")
+            data = json.loads(content)
+        logger.info(f"Parsed data: {data[:2] if isinstance(data, list) else data}")
+        return data
+    except json.JSONDecodeError as e:
+        logger.error(f"JSON decode error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Invalid JSON: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error reading file: {str(e)}")
+
+@app.post("/storage/process_model_data/")
+async def process_model_data(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
         filename = file.filename
-        print(f"Received file: {filename}")  # Debugging
-
-        # Determine subfolder based on filename pattern
-        if re.match(r"^hourly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
+        logger.info(f"Processing file: {filename}")
+        
+        # Determine subfolder and data model
+        if "hourly" in filename:
             subfolder = "hourly"
-            table_name = "hourly_data"
-        elif re.match(r"^daily_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
+            data_model = HourlyData
+            logger.info("Matched subfolder: hourly")
+        elif "daily" in filename:
             subfolder = "daily"
-            table_name = "daily_data"
-        elif re.match(r"^weekly_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$", filename):
+            data_model = DailyData
+            logger.info("Matched subfolder: daily")
+        elif "weekly" in filename:
             subfolder = "weekly"
-            table_name = "weekly_data"
+            data_model = WeeklyData
+            logger.info("Matched subfolder: weekly")
         else:
-            print(f"No match found! Assigning to 'others' folder. Filename: {filename}")
-            subfolder = "others"
-            table_name = None
-
-        # Ensure the correct subfolder exists
+            logger.error(f"Invalid filename format: {filename}")
+            raise HTTPException(status_code=400, detail="Invalid filename format")
+        
+        # Save file to storage
         target_folder = os.path.join(BASE_STORAGE_PATH, subfolder)
         os.makedirs(target_folder, exist_ok=True)
+        file_path = os.path.join(target_folder, filename)
+        content = await file.read()
+        with open(file_path, "wb") as f:
+            f.write(content)
 
-        # Save the uploaded file to the storage directory
+        # Save to database
+        db_entry = data_model(filename=filename)
+        db.add(db_entry)
+        db.commit()
+        db.refresh(db_entry)
+
+        logger.info(f"File saved to: {file_path} and database table: {data_model.__tablename__}")
+        return {
+            "status": "File processed", 
+            "file_path": file_path,
+            "filename": filename,
+            "table": data_model.__tablename__,
+            "upload_date": db_entry.upload_date
+        }
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/storage/upload/", response_model=FileResponse)
+async def upload_file(file: UploadFile = File(...), db: Session = Depends(get_db)):
+    try:
+        filename = file.filename
+        print(f"Received file: {filename}")
+
+        # Determine data type from filename
+        pattern = r"^(hourly|daily|weekly)_(solar|wind)_data_\d{4}_\d{2}_\d{2}T\d{2}_\d{2}_\d{2}_\d{3}Z\.json$"
+        match = re.match(pattern, filename)
+        
+        subfolder = "others"
+        data_model = None
+        
+        if match:
+            frequency = match.group(1)
+            subfolder = frequency
+            data_model = DATA_MODELS[frequency]
+
+        # Save file
+        target_folder = os.path.join(BASE_STORAGE_PATH, subfolder)
+        os.makedirs(target_folder, exist_ok=True)
         file_location = os.path.join(target_folder, filename)
+        
+        content = await file.read()
         with open(file_location, "wb") as f:
-            content = await file.read()  # Read the file content
-            f.write(content)  # Write the content to the file
+            f.write(content)
 
-        print(f"File saved to: {file_location}")  # Debugging
-
-        # Insert filename into database if valid
-        if table_name:
-            db_conn = get_db_connection()
-            cursor = db_conn.cursor()
-
-        try:
-            query = f"INSERT INTO {table_name} (filename) VALUES (%s)"
-            cursor.execute(query, (filename,))
-            db_conn.commit()
-            print(f"Inserted {filename} into {table_name} table.")  # Confirm insertion
-        except Exception as e:
-            print(f"Database Error: {str(e)}")  # Print any DB error
-        finally:
-            cursor.close()
-            db_conn.close()
+        # Create DB entry if valid model type
+        if data_model:
+            db_entry = data_model(filename=filename)
+            db.add(db_entry)
+            db.commit()
 
         return {"status": "File uploaded successfully", "file_path": file_location}
-    
+
     except Exception as e:
-        print(f"Error storing the file: {str(e)}")  # Debugging
-        return {"error": f"Error storing the file: {str(e)}"}
-@app.get("/storage/latest-file/")
-async def get_latest_file():
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Add this new model
+class UploadResponse(BaseModel):
+    status: str
+    file_path: str
+    filename: str
+
+# Modify the upload_csv endpoint
+@app.post("/storage/upload_csv/", response_model=UploadResponse)
+async def upload_csv(file: UploadFile = File(...), db: Session = Depends(get_db)):
     try:
-        db_conn = get_db_connection()
-        cursor = db_conn.cursor(dictionary=True)
+        filename = file.filename
+        file_location = os.path.join(BASE_STORAGE_PATH, "json", filename)
+        os.makedirs(os.path.dirname(file_location), exist_ok=True)
+        
+        content = await file.read()
+        with open(file_location, "wb") as f:
+            f.write(content)
 
-        # Retrieve the latest uploaded file
-        query = "SELECT filename FROM hourly_data ORDER BY id DESC LIMIT 1"
-        cursor.execute(query)
-        result = cursor.fetchone()
+        db_entry = JsonData(filename=filename)
+        db.add(db_entry)
+        db.commit()
 
-        cursor.close()
-        db_conn.close()
-
-        if result:
-            return {"filename": result["filename"]}
-        else:
-            return {"error": "No files found in the database."}
+        return {
+            "status": "File uploaded successfully", 
+            "file_path": file_location,
+            "filename": filename
+        }
 
     except Exception as e:
-        return {"error": f"Error retrieving the file: {str(e)}"}
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/storage/latest-file/", response_model=LatestFileResponse)
+async def get_latest_file(data_type: str, db: Session = Depends(get_db)):
+    try:
+        data_model = DATA_MODELS.get(data_type)
+        if not data_model:
+            raise HTTPException(status_code=400, detail="Invalid data_type. Valid options are 'hourly', 'daily', 'weekly'.")
+
+        latest_file = db.query(data_model).order_by(desc(data_model.id)).first()
+        if not latest_file:
+            raise HTTPException(status_code=404, detail=f"No files found in the {data_model.__tablename__} table.")
+
+        return {"id": latest_file.id, "filename": latest_file.filename}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/storage/get-latest-by-pattern/{filename}", response_model=LatestFileResponse)
+async def get_latest_by_pattern(filename: str, db: Session = Depends(get_db)):
+    try:
+        # Determine data type from filename
+        data_type = None
+        if "weekly" in filename:
+            data_type = "weekly"
+        elif "daily" in filename:
+            data_type = "daily"
+        elif "hourly" in filename:
+            data_type = "hourly"
+        
+        if not data_type:
+            raise HTTPException(status_code=400, detail="Invalid filename pattern")
+            
+        data_model = DATA_MODELS.get(data_type)
+        latest_file = db.query(data_model).order_by(desc(data_model.id)).first()
+        
+        if not latest_file:
+            raise HTTPException(status_code=404, detail=f"No files found in the {data_model.__tablename__} table.")
+
+        return {
+            "id": latest_file.id, 
+            "filename": latest_file.filename,
+            "upload_date": latest_file.upload_date
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
